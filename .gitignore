@@ -1,0 +1,17 @@
+*.class
+*.log
+*.jar
+
+data.db
+
+download/
+.bloop/
+.bsp/
+.metals/
+.vscode/
+target/
+
+project/.bloop
+project/metals.sbt
+project/target
+project/project
