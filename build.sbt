@@ -4,10 +4,11 @@ ThisBuild / organization     := "moe.karla"
 
 
 
-val zioVersion = "2.0.19"
-val quillVersion = "4.8.0"
-val zioHttpVersion = "3.0.0-RC3"
-val zioConfigVersion = "4.0.0-RC16"
+val zioVersion = "2.0.21"
+val quillVersion = "4.8.3"
+val zioHttpVersion = "3.0.0-RC4"
+val zioConfigVersion = "4.0.1"
+val zioLoggingVersion = "2.2.2"
 
 
 
@@ -21,26 +22,39 @@ ThisBuild / assemblyMergeStrategy := {
 
 lazy val root = (project in file("."))
   .settings(
-    name := "spmd",
+    name := "spmd-zio",
     scalaVersion := "3.3.1",
     scalacOptions ++= Seq("-Ykind-projector:underscores", "-language:postfixOps"),
-    javacOptions ++= Seq("-source", "11", "-target", "11"),
+    javacOptions ++= Seq("-source", "17", "-target", "11"),
     libraryDependencies ++= Seq(
 
       "dev.zio" %% "zio" % zioVersion,
       "dev.zio" %% "zio-streams" % zioVersion,
 
-      "io.getquill" %% "quill-jdbc" % quillVersion,
+      //"io.getquill" %% "quill-jdbc" % quillVersion,
       "io.getquill" %% "quill-jdbc-zio" % quillVersion,
+      
 
       "dev.zio" %% "zio-http" % zioHttpVersion,
 
       "dev.zio" %% "zio-config" % zioConfigVersion,
       "dev.zio" %% "zio-config-typesafe" % zioConfigVersion,
+      "dev.zio" %% "zio-config-magnolia" % zioConfigVersion,
 
-      "net.sourceforge.htmlunit" % "htmlunit" % "2.70.0",
-      "org.slf4j" % "slf4j-simple" % "2.0.9",
-      "org.jsoup" % "jsoup" % "1.17.1",
+      "dev.zio" %% "zio-logging" % zioLoggingVersion,
+      //"dev.zio" %% "zio-logging-slf4j2" % zioLoggingVersion,
+
+      "dev.zio" %% "zio-json" % "0.6.2",
+      
+      "com.zaxxer" % "HikariCP" % "5.1.0",
+      "org.xerial" % "sqlite-jdbc" % "3.45.1.0",
+      //"org.apache.derby" % "derby" % "10.15.2.0",
+      "com.h2database" % "h2" % "2.2.224",
+      //"org.flywaydb" % "flyway-core" % "10.4.1",
+      "org.flywaydb" % "flyway-core" % "9.22.3",
+      "com.microsoft.playwright" % "playwright" % "1.41.2",
+      "org.slf4j" % "slf4j-simple" % "2.0.12",
+      "org.jsoup" % "jsoup" % "1.17.2",
     ),
-    assembly / mainClass := Some("moe.karla.Spmd")
+    assembly / mainClass := Some("moe.karla.AppMain")
   )

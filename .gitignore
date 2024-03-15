@@ -2,7 +2,12 @@
 *.log
 *.jar
 
+
 data.db
+data/
+data.mv.db
+data.trace.db
+
 
 download/
 .bloop/

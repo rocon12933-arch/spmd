@@ -1,0 +1,1 @@
+Invoke-WebRequest -Method 'post' -InFile 'data.txt' http://localhost:8749/task | Select-Object -ExpandProperty Content
