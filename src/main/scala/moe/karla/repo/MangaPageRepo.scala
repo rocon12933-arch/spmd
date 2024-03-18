@@ -66,7 +66,7 @@ class MangaPageRepo(quill: Quill.H2[SnakeCase]):
         _.pageUri -> lift(pageUri), 
         _.path -> lift(path), 
         _.status -> lift(status.code)
-      ).onConflictIgnore
+      )
     }
     
 
@@ -80,7 +80,6 @@ class MangaPageRepo(quill: Quill.H2[SnakeCase]):
           _.path -> p.path, 
           _.status -> p.status,
         )
-        .onConflictIgnore
       )
     }
   

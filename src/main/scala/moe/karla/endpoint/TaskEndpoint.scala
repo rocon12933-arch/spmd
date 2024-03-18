@@ -9,6 +9,7 @@ import zio.stream.ZStream
 import zio.json.*
 
 import scala.io.Source
+import moe.karla.config.AppConfig
 
 
 
@@ -18,13 +19,16 @@ object TaskEndpoint:
     Method.POST / "task" -> Handler.fromFunctionZIO { (req: Request) =>
       for
         content <- req.body.asString
-        //_ <- ZIO.log(s"content: $content")
-        lines <- ZIO.attempt(Source.fromString(content).getLines().toList)
-        _ <- MangaMetaRepo.batchCreate(lines.map(MangaMeta(0, _, "Pending...", 0, 0, 0)))
-      yield Response.ok
+        config <- ZIO.service[AppConfig]
+        lines <- ZIO.attempt(Source.fromString(content).getLines().map(_.strip()).filterNot(_ == "").toList)
+        _ <- 
+          if (lines.size > 0)
+            MangaMetaRepo.batchCreate(lines.map(MangaMeta(0, _, "Pending...", 0, 0, MangaMeta.Status.Pending.code)))
+          else ZIO.unit
+
+      yield Response.json(lines.toJsonPretty)
     }
   )
-  .handleError(e => 
-    e.printStackTrace()
+  .handleError(e =>
     Response.fromThrowable(e)
   )

@@ -1,8 +1,8 @@
 /* H2 Style*/
---status: 0:pending 1:parsing 2:running 3:completed -1:interrupted -2:failed
+--status: 0:pending 1:parsing 2:parsed 3:running 4:completed -1:interrupted -2:failed
 create table manga_meta(
   id int generated always as identity,
-  gallery_uri varchar(500) not null unique,
+  gallery_uri varchar(500) not null,
   title varchar(500) not null,
   total_pages int not null,
   completed_pages int not null,
@@ -22,10 +22,10 @@ create table manga_page(
 
 
 /*Sqlite Style
---status: 0:pending 1:parsing 2:running 3:completed -1:interrupted -2:failed
+--status: 0:pending 1:parsing 2:parsed 3:running 4:completed -1:interrupted -2:failed
 create table manga_meta(
   id integer primary key,
-  gallery_uri text not null unique,
+  gallery_uri text not null,
   title text not null,
   total_pages int not null,
   completed_pages int not null,

@@ -141,8 +141,7 @@ class NHentaiHandler(
 
       _ <- client.request(Request.get(imgUri))
         .map(_.body.asStream)
-        .flatMap(_.tapSink(fireSink)
-        .run(ZSink.fromFileName(path)))
+        .flatMap(_.timeout(90 seconds).tapSink(fireSink).run(ZSink.fromFileName(path)))
         .retry(retryPolicy)
         .mapError(NetworkError(_))
 
@@ -158,7 +157,7 @@ class NHentaiHandler(
       .retry(Schedule.recurs(3) || Schedule.spaced(2 seconds))
       .mapError(FileSystemError(_))
 
-      _ <- ZIO.log(s"Saved: ${path}.${ext}")
+      _ <- ZIO.log(s"Saved: {${imgUri}} as {${path}.${ext}}")
       
     yield page.id
 

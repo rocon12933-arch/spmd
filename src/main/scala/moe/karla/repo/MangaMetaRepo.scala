@@ -27,8 +27,9 @@ object MangaMeta:
   enum Status(val code: Short):
     case Pending extends Status(0)
     case Parsing extends Status(1)
-    case Running extends Status(2)
-    case Completed extends Status(3)
+    case Parsed extends Status(2)
+    case Running extends Status(3)
+    case Completed extends Status(4)
     case Interrupted extends Status(-1)
     case Failed extends Status(-2)
       
@@ -94,7 +95,6 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
         _.status -> lift(status),
         _.completedPages -> lift(0)
       )
-      .onConflictIgnore
     }
 
 
@@ -108,7 +108,6 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
           _.completedPages -> 0, 
           _.status -> p.status,
         )
-        .onConflictIgnore
       )
     }
   

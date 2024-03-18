@@ -38,21 +38,19 @@ class DownloaderService(
   )//.mapError(SQLException(_))
 
 
-  def execute = ZStream.repeatWithSchedule(0, Schedule.spaced(3 seconds)).mapZIOParUnordered(config.parallelGalleries)(_ =>
+  def execute = ZStream.repeatWithSchedule(0, Schedule.spaced(5 seconds)).mapZIOParUnordered(config.parallelPages)(_ =>
     import MangaPage.Status.*
     (
       for
         opt <- acquire(Pending, Running)
         down <- opt match
           case Some(page) => {
-            nhentaiHandler.download(page)
+            nhentaiHandler.download(page).tapError(_ => pageRepo.updateStatus(page.id, Failed))
           }
           case None => ZIO.unit
         _ <- down match
           case id: Int => 
-            transaction(
-              //pageRepo.delete(opt.get.id) *> metaRepo.increaseCompletedPages(opt.get.metaId) 
-              
+            transaction( 
               for 
                 //_ <- pageRepo.updateStatus(id, Completed)
                 _ <- pageRepo.delete(id)

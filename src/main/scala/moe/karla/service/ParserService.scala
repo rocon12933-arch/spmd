@@ -59,9 +59,9 @@ class ParserService(
           result match 
             case (parsedMeta: MangaMeta, parsedPages: List[MangaPage]) =>
               quill.transaction(
-                metaRepo.update(parsedMeta) *>
+                metaRepo.update(parsedMeta.copy(status = Parsed.code)) *>
                 pageRepo.batchCreate(parsedPages)
-              ).flatMap(_ => ZIO.log(s"Meta is saved: ${parsedMeta.title}"))
+              ).flatMap(_ => ZIO.log(s"Meta is saved: ${parsedMeta.title}")) <* ZIO.sleep(3 seconds)
             case _ => ZIO.unit
       yield ()
     )
