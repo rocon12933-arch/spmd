@@ -17,22 +17,33 @@ case class MangaMeta(
   title: String,
   totalPages: Int,
   completedPages: Int,
-  status: Short,
+  state: Short,
+  cause: Option[String],
 )
 
 object MangaMeta:
 
   given encoder: JsonEncoder[MangaMeta] = DeriveJsonEncoder.gen[MangaMeta]
 
-  enum Status(val code: Short):
-    case Pending extends Status(0)
-    case Parsing extends Status(1)
-    case Parsed extends Status(2)
-    case Running extends Status(3)
-    case Completed extends Status(4)
-    case Interrupted extends Status(-1)
-    case Failed extends Status(-2)
-      
+  enum State(val code: Short):
+    case Pending extends State(0)
+    case Parsing extends State(1)
+    case Parsed extends State(2)
+    case Running extends State(3)
+    case Completed extends State(4)
+    case Failed extends State(-1)
+    case Interrupted extends State(-2)
+
+    def fromCode(code: Short) = 
+      code match 
+        case Pending.code => Pending
+        case Parsing.code => Parsing
+        case Parsed.code => Parsed
+        case Running.code => Running
+        case Completed.code => Completed
+        case Failed.code => Failed
+        case Interrupted.code => Interrupted
+        case _ => throw IllegalArgumentException("No such code in defined states") 
 
 
 /*
@@ -41,22 +52,23 @@ trait MangaMetaRepo:
   def all: IO[SQLException, List[MangaMeta]] 
 
 
-  def updateStatus(id: Int, status: Short): IO[SQLException, Boolean]
+  def updateState(id: Int, State: Short): IO[SQLException, Boolean]
 
 
-  def create(galleryUri: String, title: String, totalPages: Int, status: Short): IO[SQLException, Int]
+  def create(galleryUri: String, title: String, totalPages: Int, State: Short): IO[SQLException, Int]
 
 
   def delete(id: Int): IO[SQLException, Boolean]
 
 
-  def accquire(status: Short, transfrom: Short): IO[SQLException, Option[MangaMeta]]
+  def accquire(State: Short, transfrom: Short): IO[SQLException, Option[MangaMeta]]
 */
 
 
 class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
 
   import quill.*
+  import MangaMeta.State
 
   private inline def metaQuery = querySchema[MangaMeta]("manga_meta")
 
@@ -66,13 +78,23 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
   }
 
 
-  private inline def queryGetFirstByStatus(status: MangaMeta.Status) = quote {
-    metaQuery.filter(_.status == lift(status.code)).take(1)
+  private inline def queryGetFirstByState(state: State) = quote {
+    metaQuery.filter(_.state == lift(state.code)).take(1)
+  }
+
+  
+  private inline def queryGetFirstByStateIn(states: Seq[State]) = quote {
+    metaQuery.filter(m => liftQuery(states.map(_.code)).contains(m.state)).take(1)
   }
 
 
-  private inline def queryUpdateStatus(id: Int, status: MangaMeta.Status) = quote {
-    metaQuery.filter(_.id == lift(id)).update(_.status -> lift(status.code))
+  private inline def queryUpdateState(id: Int, state: State) = quote {
+    metaQuery.filter(_.id == lift(id)).update(_.state -> lift(state.code))
+  }
+
+
+  private inline def queryUpdateStateIn(states: Seq[State])(newState: State) = quote {
+    metaQuery.filter(m => liftQuery(states.map(_.code)).contains(m.state)).update(_.state -> lift(newState.code))
   }
 
 
@@ -86,14 +108,14 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
   }
 
 
-  private inline def queryInsert(galleryUri: String, title: String, totalPages: Int, status: Short) =
+  private inline def queryInsert(galleryUri: String, title: String, totalPages: Int, state: Short) =
     quote { 
       metaQuery.insert(
-        _.galleryUri -> lift(galleryUri), 
-        _.title -> lift(title), 
-        _.totalPages -> lift(totalPages), 
-        _.status -> lift(status),
-        _.completedPages -> lift(0)
+        _.galleryUri -> lift(galleryUri),
+        _.title -> lift(title),
+        _.totalPages -> lift(totalPages),
+        _.state -> lift(state),
+        _.completedPages -> lift(0),
       )
     }
 
@@ -106,11 +128,14 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
           _.totalPages -> p.totalPages,
           _.title -> p.title, 
           _.completedPages -> 0, 
-          _.status -> p.status,
+          _.state -> p.state,
         )
       )
     }
   
+
+  def underlying = quill
+
 
   def getOption(id: Int) = run(quote { queryGet(id) }).map(_.headOption)
 
@@ -128,11 +153,11 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
       _.totalPages -> lift(meta.totalPages),
       _.title -> lift(meta.title), 
       _.completedPages -> lift(meta.completedPages), 
-      _.status -> lift(meta.status),
+      _.state -> lift(meta.state),
     ) }).map(_ > 0)
 
 
-  def updateStatus(id: Int, status: MangaMeta.Status) = run(queryUpdateStatus(id, status)).map(_ > 0)
+  def updateState(id: Int, state: State) = run(queryUpdateState(id, state)).map(_ > 0)
 
 
   def increaseCompletedPages(id: Int) = run(queryIncreaseCompletedPages(id)).map(_ > 0)
@@ -141,21 +166,27 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
   def delete(id: Int) = run(queryDelete(id)).map(_ > 0)
 
   
-  def create(galleryUri: String, title: String, totalPages: Int, status: MangaMeta.Status) = 
+  def create(galleryUri: String, title: String, totalPages: Int, state: State) = 
     transaction(
-      run(queryInsert(galleryUri, title, totalPages, status.code)) *>
+      run(queryInsert(galleryUri, title, totalPages, state.code)) *>
       run(metaQuery.filter(_.galleryUri == lift(galleryUri)).map(_.id).take(1))
     )
     //.mapError(SQLException(_))
     .map(_.head)
 
 
-  def getFirstByStatusOption(status: MangaMeta.Status) = 
-    run(queryGetFirstByStatus(status)).map(_.headOption)
+  def getFirstByStateOption(state: State) = 
+    run(queryGetFirstByState(state)).map(_.headOption)
+
+
+  def getFirstByStateInOption(state: State*) = 
+    run(queryGetFirstByStateIn(state)).map(_.headOption)
+
+  
+  def updateStateIn(states: State*)(newState: State) = run(queryUpdateStateIn(states)(newState))
 
 
   def batchCreate(li: List[MangaMeta]) = run(batchInsert(li))
-
 
 
 object MangaMetaRepo:
@@ -169,18 +200,18 @@ object MangaMetaRepo:
   def updateFastly(meta: MangaMeta) = ZIO.serviceWithZIO[MangaMetaRepo](_.updateFastly(meta))
 
 
-  def updateStatus(id: Int, status: MangaMeta.Status) = ZIO.serviceWithZIO[MangaMetaRepo](_.updateStatus(id, status))
+  def updateState(id: Int, state: MangaMeta.State) = ZIO.serviceWithZIO[MangaMetaRepo](_.updateState(id, state))
 
 
-  def create(galleryUri: String, title: String, totalPages: Int, status: MangaMeta.Status) =
-    ZIO.serviceWithZIO[MangaMetaRepo](_.create(galleryUri, title, totalPages, status))
+  def create(galleryUri: String, title: String, totalPages: Int, state: MangaMeta.State) =
+    ZIO.serviceWithZIO[MangaMetaRepo](_.create(galleryUri, title, totalPages, state))
 
 
   def delete(id: Int) = ZIO.serviceWithZIO[MangaMetaRepo](_.delete(id))
 
   
-  def getFirstByStatusOption(status: MangaMeta.Status) = 
-    ZIO.serviceWithZIO[MangaMetaRepo](_.getFirstByStatusOption(status))
+  def getFirstByStateOption(state: MangaMeta.State) = 
+    ZIO.serviceWithZIO[MangaMetaRepo](_.getFirstByStateOption(state))
 
 
   def batchCreate(li: List[MangaMeta]) = ZIO.serviceWithZIO[MangaMetaRepo](_.batchCreate(li))

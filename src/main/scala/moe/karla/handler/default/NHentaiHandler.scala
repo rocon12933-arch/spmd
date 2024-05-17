@@ -23,13 +23,13 @@ import java.io.IOException
 
 class NHentaiHandler(
   config: AppConfig,
-):
+) extends moe.karla.handler.Handler:
 
 
   private val retryPolicy = 
-    Schedule.recurs(4) || 
-    Schedule.spaced(1 second) || 
-    Schedule.fibonacci(200 millis) 
+    Schedule.recurs(4) && 
+    Schedule.spaced(1 second) &&
+    Schedule.fibonacci(600 millis)
 
   /* 
   private def fileExtJudge(bytes: List[Byte]) =
@@ -48,14 +48,11 @@ class NHentaiHandler(
       // 0x47 = 0100 0111 -> self = 71
       case 71 :: 79 :: 70 :: _ => "gif"
       
-      //case 0xFF :: 0xD8 :: 0xFF :: _ => "jpg"
-      //case 0x89 :: 0x50 :: 0x4E :: _ => "png"
-      //case 0x47 :: 0x49 :: 0x46 :: _ => "gif"
 
       case _ => "unknown"
 
 
-  private def configuredRequest(uri: String) = 
+  private def configureRequest(uri: String) = 
     Request.get(uri)
       .addHeader("Cookie", config.nhentai.cloudflare.cookies)
       .addHeader("User-Agent", config.agent)
@@ -67,7 +64,10 @@ class NHentaiHandler(
         .replace('?', '？')
         .replace('（', '(')
         .replace('）', ')')
-        .replace(": ", "：")
+        .replace(":", "：")
+        .replace("/", "／")
+        .replace("\\", "＼")
+        .replace("*", "＊")
         .replaceAll("[\\\\/:*?\"<>|]", " ")
 
   
@@ -75,24 +75,38 @@ class NHentaiHandler(
   def parseAndRetrivePages(meta: MangaMeta) =
     for
       client <- ZIO.service[Client]
-      request = configuredRequest(meta.galleryUri)
+
+      request = configureRequest(meta.galleryUri)
+
       _ <- ZIO.log(s"Parsing: ${meta.galleryUri}")
+
       body <- 
         client.request(request)
-        .flatMap(_.body.asString)
-        .retry(retryPolicy)
-        .mapError(NetworkError(_))
-        .map(Jsoup.parse(_).body)
+          .flatMap { resp =>
+            if (resp.status.code == 403) ZIO.fail(BypassError(s"A cloudflare blocking presents while parsing: ${meta.galleryUri}"))
+            else resp.body.asString
+          }
+          .retry(retryPolicy && Schedule.recurWhile[Throwable] {
+            case _: BypassError => false
+            case _ => true 
+          })
+          .mapError(e =>
+            e match
+              case b: BypassError => b
+              case _ => NetworkError(e) 
+          )
+          .map(Jsoup.parse(_).body)
+          
 
       title <- ZIO.fromOption(
         Option(body.selectFirst("h2.title")).orElse(Option(body.selectFirst("h1.title"))).map(_.wholeText)
-      ).mapError(_ => ParsingError(s"Error: Retrive title from meta failed while parsing { ${meta.galleryUri} }"))
+      ).mapError(_ => ParsingError(s"Retrive title from meta failed while parsing { ${meta.galleryUri} }"))
 
       pages <- ZIO.attempt(
         body.select("span.tags > a.tag > span.name").last.text.toInt
-      ).mapError(_ => ParsingError(s"Error: Retrive pages from meta failed while parsing { ${meta.galleryUri} }"))
+      ).mapError(_ => ParsingError(s"Retrive pages from meta failed while parsing { ${meta.galleryUri} }"))
 
-      parsedMeta = meta.copy(status = 2, title = title, totalPages = pages)
+      parsedMeta = meta.copy(state = 2, title = title, totalPages = pages)
 
       parsedPages = (1 to parsedMeta.totalPages).map(p =>
 
@@ -104,7 +118,7 @@ class NHentaiHandler(
           s"${u}/${p}/",
           p,
           s"${parsedMeta.title.filtered}",
-          MangaPage.Status.Pending.code,
+          MangaPage.State.Pending.code,
         )
       )
       .toList
@@ -119,7 +133,7 @@ class NHentaiHandler(
       _ <- ZIO.log(s"Parsing: ${page.pageUri}")
 
       body <- 
-        client.request(configuredRequest(page.pageUri))
+        client.request(configureRequest(page.pageUri))
         .flatMap(_.body.asString)
         .retry(retryPolicy)
         .mapError(NetworkError(_))
@@ -127,9 +141,9 @@ class NHentaiHandler(
 
       imgUri <- ZIO.attempt(
         body.select("section#image-container > a > img").first.attr("src")
-      ).mapError(_ => ParsingError(s"Error: Retrive image from page failed while parsing { ${page.pageUri} }"))
+      ).mapError(_ => ParsingError(s"Retrive image from page failed while parsing { ${page.pageUri} }"))
 
-      ref <- Ref.make("unknown")
+      ref <- FiberRef.make("unknown")
 
       fireSink = ZSink.collectAllN[Byte](10).map(_.toList).mapZIO(bytes => ref.set(fileExtJudge(bytes)))
 
@@ -159,7 +173,7 @@ class NHentaiHandler(
 
       _ <- ZIO.log(s"Saved: {${imgUri}} as {${path}.${ext}}")
       
-    yield page.id
+    yield page
 
 
 object NHentaiHandlerLive:

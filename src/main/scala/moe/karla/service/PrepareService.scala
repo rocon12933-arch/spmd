@@ -4,8 +4,9 @@ package moe.karla.service
 
 import moe.karla.config.AppConfig
 import moe.karla.handler.*
-import moe.karla.repo.*
 import moe.karla.handler.default.* 
+import moe.karla.repo.*
+
 
 import zio.*
 import zio.stream.*
@@ -24,7 +25,9 @@ class PrepareService(
   quill: Quill.H2[SnakeCase],
 ):
 
-  def execute = pageRepo.updateAllStatus(MangaPage.Status.Pending)
+  def execute = 
+    metaRepo.updateStateIn(MangaMeta.State.Running)(MangaMeta.State.Interrupted) *>
+    pageRepo.updateStateIn(MangaPage.State.Running)(MangaPage.State.Pending)
 
 
 object PrepareService:

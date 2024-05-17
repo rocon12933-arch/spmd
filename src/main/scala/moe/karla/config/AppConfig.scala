@@ -22,9 +22,9 @@ final case class AppConfig(
 
   parallelGalleries: Int,
 
-  parseGalleriesImmediately: Boolean,
-
   dequeueIfCompleted: Boolean,
+
+  prettyMetaResponse: Boolean,
 
   nhentai: NHentaiConfig,
 

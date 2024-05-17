@@ -9,6 +9,8 @@ import moe.karla.repo.MangaPageRepoLive
 import moe.karla.handler.default.NHentaiHandlerLive
 import moe.karla.handler.default.HentaiMangaHandlerLive
 import moe.karla.service.*
+import moe.karla.service.PrepareService
+import moe.karla.endpoint.BasicEndpoint
 import moe.karla.endpoint.TaskEndpoint
 
 
@@ -23,7 +25,6 @@ import zio.config.typesafe.TypesafeConfigProvider
 
 import java.nio.file.Paths
 import java.nio.file.Files
-import moe.karla.service.PrepareService
 
 
 
@@ -36,24 +37,25 @@ object AppMain extends ZIOAppDefault:
     consoleLogger()
 
   def run =
-    (
+    FlywayMigration.runMigrate *>
+    (ZIO.stateful(DownloadValve.Enabled)(
       for
         config <- ZIO.service[AppConfig]
-        _ <- FlywayMigration.runMigrate
         _ <- ZIO.attemptBlockingIO(Files.createDirectories(Paths.get(config.downPath)))
         _ <- PrepareService.run
-        _ <- ParserService.runDaemon
-        _ <- DownloaderService.runDaemon
-        port <- Server.install(TaskEndpoint.routes.toHttpApp)
+        _ <- DownloadHub.runDaemon
+        port <- Server.install((TaskEndpoint.routes ++ BasicEndpoint.routes).toHttpApp)
         _ <- ZIO.log(s"Server started @ ${config.host}:${port}")
         _ <- ZIO.never
       yield ExitCode.success
-    )
+    ))
     .provide(
-      dataSourceLayer, AppConfig.layer, ParserServiceLive.layer, DownloaderServiceLive.layer, PrepareServiceLive.layer,
+      dataSourceLayer, AppConfig.layer,
       NHentaiHandlerLive.layer,
       //HentaiMangaHandlerLive.layer,
-      moe.karla.repo.quillLayer,
+      PrepareServiceLive.layer,
+      DownloadHubLive.layer,
+      moe.karla.repo.quillH2Layer,
       MangaMetaRepoLive.layer, 
       MangaPageRepoLive.layer,
       ServerConfigLive.layer, Server.customized,

@@ -13,23 +13,27 @@ case class MangaPage(
   pageUri: String,
   pageNumber: Int,
   path: String,
-  status: Short,
+  state: Short,
 )
 
 object MangaPage:
 
-  enum Status(val code: Short):
-    case Pending extends Status(0)
-    case Running extends Status(1)
-    case Completed extends Status(2)
-    case Failed extends Status(-1)
+  enum State(val code: Short):
+    case Pending extends State(0)
+    case Running extends State(1)
+    case Completed extends State(2)
+    case Failed extends State(-1)
+    //case Interrupted extends State(-2)
       
 
 
 class MangaPageRepo(quill: Quill.H2[SnakeCase]):
 
   import quill.*
-  
+  import MangaPage.State
+  import MangaPage.State.*
+
+
   private inline def pageQuery = querySchema[MangaPage]("manga_page")
   
 
@@ -38,18 +42,56 @@ class MangaPageRepo(quill: Quill.H2[SnakeCase]):
   }
 
 
-  private inline def queryUpdateAllStatus(status: MangaPage.Status) = quote {
-    pageQuery.update(_.status -> lift(status.code))
+  private inline def queryUpdateAllState(state: State) = quote {
+    pageQuery.update(_.state -> lift(state.code))
   } 
 
 
-  private inline def queryUpdateStatus(id: Int, status: MangaPage.Status) = quote {
-    pageQuery.filter(_.id == lift(id)).update(_.status -> lift(status.code))
-  } 
+  private inline def queryUpdateState(id: Int, state: State) = quote {
+    pageQuery.filter(_.id == lift(id)).update(_.state -> lift(state.code))
+  }
 
 
-  private inline def queryGetFirstByStatus(status: MangaPage.Status) = quote {
-    pageQuery.filter(_.status == lift(status.code)).take(1)
+  private inline def queryUpdateStateIn(state: Seq[State])(newState: State) =
+    quote {
+      pageQuery
+        .filter(p => liftQuery(state.map(s => s.code)).contains(p.state))
+        .update(_.state -> lift(newState.code))
+    }
+
+
+  private inline def queryUpdateStateIn(metaId: Int, newState: State, in: Seq[State]) = 
+    quote {
+      pageQuery
+        .filter(_.metaId == lift(metaId))
+        .filter(p => liftQuery(in.map(s => s.code)).contains(p.state))
+        .update(_.state -> lift(newState.code))
+    }
+
+
+  private inline def queryUpdateStateExcept(metaId: Int, newState: State, excepts: Seq[State]) = 
+    quote {
+      pageQuery
+        .filter(_.metaId == lift(metaId))
+        .filter(p => !liftQuery(excepts.map(s => s.code)).contains(p.state))
+        .update(_.state -> lift(newState.code))
+    }
+
+
+  private inline def queryGetFirstByState(state: State) = quote {
+    pageQuery.filter(_.state == lift(state.code)).take(1)
+  }
+
+  private inline def queryGetFirstByMetaIdAndState(metaId: Int, state: State) = quote {
+    pageQuery.filter(_.metaId == lift(metaId)).filter(_.state == lift(state.code)).take(1)
+  }
+
+
+  private inline def queryGetFirstByMetaIdAndStateIn(metaId: Int, states: State*) = quote {
+    pageQuery
+      .filter(_.metaId == lift(metaId))
+      .filter(p => liftQuery(states.map(s => s.code)).contains(p.state))
+      .take(1)
   }
 
 
@@ -58,14 +100,19 @@ class MangaPageRepo(quill: Quill.H2[SnakeCase]):
   }
 
 
-  private inline def queryInsert(metaId: Int, pageUri: String, pageNumber: Int, path: String, status: MangaPage.Status) =
+  private inline def queryDeleteByMetaId(metaId: Int) = quote {
+    pageQuery.filter(_.metaId == lift(metaId)).delete
+  }
+
+
+  private inline def queryInsert(metaId: Int, pageUri: String, pageNumber: Int, path: String, state: State) =
     quote { 
       pageQuery.insert(
         _.metaId -> lift(metaId), 
         _.pageNumber -> lift(pageNumber), 
         _.pageUri -> lift(pageUri), 
         _.path -> lift(path), 
-        _.status -> lift(status.code)
+        _.state -> lift(state.code)
       )
     }
     
@@ -78,54 +125,78 @@ class MangaPageRepo(quill: Quill.H2[SnakeCase]):
           _.pageNumber -> p.pageNumber,
           _.pageUri -> p.pageUri, 
           _.path -> p.path, 
-          _.status -> p.status,
+          _.state -> p.state,
         )
       )
     }
   
 
+  def underlying = quill
+  
+
   def getOption(id: Int) = run(queryGet(id)).map(_.headOption)
 
   
-  def create(metaId: Int, pageUri: String, pageNumber: Int, path: String, status: MangaPage.Status) = 
-    run(queryInsert(metaId, pageUri, pageNumber, path, status))
+  def create(metaId: Int, pageUri: String, pageNumber: Int, path: String, state: State) = 
+    run(queryInsert(metaId, pageUri, pageNumber, path, state))
   
   
-  def updateAllStatus(status: MangaPage.Status) = run(queryUpdateAllStatus(status))
+  def updateAllState(state: State) = run(queryUpdateAllState(state))
 
 
-  def updateStatus(id: Int, status: MangaPage.Status) = run(queryUpdateStatus(id, status)).map(_ > 0)
+  def updateStateIn(state: State*)(newState: State) = run(queryUpdateStateIn(state)(newState))
 
+
+  def updateState(id: Int, state: State) = run(queryUpdateState(id, state)).map(_ > 0)
+
+
+  def updateStateExcept(metaId: Int, excepts: State*)(newState: State) = 
+    run(queryUpdateStateExcept(metaId, newState, excepts))
+
+
+  def updateStateIn(metaId: Int, in: State*)(newState: State) = 
+    run(queryUpdateStateIn(metaId, newState, in))
+  
 
   def batchCreate(li: List[MangaPage]) = 
     run(batchInsert(li))
 
   
-  def getFirstByStatusOption(status: MangaPage.Status) = 
-    run(queryGetFirstByStatus(status)).map(_.headOption)
+  def getFirstByStateOption(state: State) =
+    run(queryGetFirstByState(state)).map(_.headOption)
+
+  
+  def getFirstByMetaIdAndStateOption(metaId: Int, state: State) =
+    run(queryGetFirstByMetaIdAndState(metaId, state)).map(_.headOption)
 
 
   def delete(id: Int) = run(queryDelete(id)).map(_ > 0)
 
+
+  def deleteByMetaId(metaId: Int) = run(queryDeleteByMetaId(metaId))
+
+  
     
 object MangaPageRepo:
 
   def getOption(id: Int) = ZIO.serviceWithZIO[MangaPageRepo](_.getOption(id))
 
    
-  def create(metaId: Int, pageUri: String, pageNumber: Int, path: String, status: MangaPage.Status) = 
-    ZIO.serviceWithZIO[MangaPageRepo](_.create(metaId, pageUri, pageNumber, path, status))
+  def create(metaId: Int, pageUri: String, pageNumber: Int, path: String, State: MangaPage.State) = 
+    ZIO.serviceWithZIO[MangaPageRepo](_.create(metaId, pageUri, pageNumber, path, State))
    
 
   def batchCreate(li: List[MangaPage]) = 
     ZIO.serviceWithZIO[MangaPageRepo](_.batchCreate(li))
 
 
-  def updateStatus(id: Int, status: MangaPage.Status) = ZIO.serviceWithZIO[MangaPageRepo](_.updateStatus(id, status))
+  def updateState(id: Int, State: MangaPage.State) = ZIO.serviceWithZIO[MangaPageRepo](_.updateState(id, State))
 
   
   def delete(id: Int) = ZIO.serviceWithZIO[MangaPageRepo](_.delete(id))
 
+
+  def deleteByMetaId(metaId: Int) = ZIO.serviceWithZIO[MangaPageRepo](_.deleteByMetaId(metaId))
 
   
 object MangaPageRepoLive:

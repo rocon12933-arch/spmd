@@ -7,6 +7,8 @@ import io.getquill.jdbczio.Quill
 
 package object repo:
   
-  val quillLayer = Quill.H2.fromNamingStrategy(SnakeCase)
+  val quillSqliteLayer = Quill.Sqlite.fromNamingStrategy(SnakeCase)
+
+  val quillH2Layer = Quill.H2.fromNamingStrategy(SnakeCase)
 
     

@@ -18,5 +18,5 @@ object ServerConfigLive:
     ZLayer.succeed(
       NettyConfig.default
         .leakDetection(LeakDetectionLevel.PARANOID)
-        .maxThreads(2)
+        .maxThreads(4)
     )
