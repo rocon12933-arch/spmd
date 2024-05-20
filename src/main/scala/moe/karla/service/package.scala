@@ -5,20 +5,9 @@ import scala.annotation.targetName
 
 
 package object service:
-  
-  extension [A <: String] (str: A)
-    def filtered = 
-      str.strip()
-        .replace('?', '？')
-        .replace('（', '(')
-        .replace('）', ')')
-        .replace(": ", "：")
-        .replaceAll("[\\\\/:*?\"<>|]", " ")
-
 
 
   type ImplicitUnit[A] = A | Unit
-  
 
   extension [R, E, A, B] (v: => ZIO[R, E, Option[A]])
 

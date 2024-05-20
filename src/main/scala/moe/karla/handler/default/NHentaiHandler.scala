@@ -48,7 +48,6 @@ class NHentaiHandler(
       // 0x47 = 0100 0111 -> self = 71
       case 71 :: 79 :: 70 :: _ => "gif"
       
-
       case _ => "unknown"
 
 
