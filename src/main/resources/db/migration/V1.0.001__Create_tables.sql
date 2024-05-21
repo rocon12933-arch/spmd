@@ -17,7 +17,7 @@ create table manga_page(
   page_uri varchar(500) not null,
   meta_id int not null,
   page_number int not null,
-  path varchar(500) not null,
+  title varchar(500) not null,
   state smallint not null
 );
 
