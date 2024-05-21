@@ -52,7 +52,7 @@ object AppMain extends ZIOAppDefault:
     .provide(
       dataSourceLayer, AppConfig.layer,
       NHentaiHandlerLive.layer,
-      //HentaiMangaHandlerLive.layer,
+      HentaiMangaHandlerLive.layer,
       PrepareServiceLive.layer,
       DownloadHubLive.layer,
       moe.karla.repo.quillH2Layer,

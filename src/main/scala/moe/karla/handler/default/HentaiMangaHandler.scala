@@ -18,14 +18,14 @@ import org.jsoup.Jsoup
 
 import java.nio.file.*
 import java.sql.SQLException
-import java.net.URI
+import java.util.UUID
 
 
 
 
 class HentaiMangaHandler(
   config: AppConfig
-):
+) extends moe.karla.handler.Handler:
 
 
   private val retryPolicy = 
@@ -33,31 +33,28 @@ class HentaiMangaHandler(
     Schedule.spaced(1 second) || 
     Schedule.fibonacci(200 millis)
 
-
-  private def configureRequest(uri: String) = 
-    Request.get(uri).addHeader("User-Agent", config.agent)
-
   
-  private def fileExtJudge(bytes: List[Byte]) =
+  private def configureRequest(url: URL) =
+    Request.get(url).addHeader("User-Agent", config.agent)
+
+
+  private def fileExtJudge(bytes: List[Byte]): Either[List[Byte], String] =
     bytes match
       //0x50 = 0101 0000 -> self = 80
       //0x4B = 0100 1011 -> self = 75
-      //0x30 = 0011 0000 -> self = 48
-      case 80 :: 75 :: 48 :: _ => "zip"
+      //0x03 = 0000 0011 -> self = 3
+      case 80 :: 75 :: 3 :: _ => Right("zip")
       //0x52 = 0101 0010 -> self = 82
       //0x61 = 0110 0001 -> self = 97
       //0x72 = 0111 0010 -> self = 114
-      case 82 :: 97 :: 114 :: _ => "rar"
+      case 82 :: 97 :: 114 :: _ => Right("rar")
       //0x37 = 0011 0110 -> self = 55
       //0x7A = 0111 1010 -> self = 122
       //0xBC = 1011 1100 -> 1100 0011 -> 1100 0100 = -68
-      //0xAF
-      //0x27 
-      //0x1C
-      case 55 :: 122 :: -68 :: _ => "7z"
+      case 55 :: 122 :: -68 :: _ => Right("7z")
       
-      case _ => "unknown"
-
+      case _ => Left(bytes)
+    
   
   extension [A <: String] (str: A)
     def filtered = 
@@ -72,29 +69,31 @@ class HentaiMangaHandler(
         .replaceAll("[\\\\/:*?\"<>|]", " ")
 
 
-  def parseAndRetrivePagesNew(meta: MangaMeta): ZIO[zio.http.Client & Scope, Exception, (MangaMeta, List[MangaPage])] =
+  def parseAndRetrivePages(meta: MangaMeta): ZIO[zio.http.Client & Scope, Exception, (MangaMeta, List[MangaPage])] =
     for
       client <- ZIO.service[Client]
 
-      request = configureRequest(meta.galleryUri)
-
       _ <- ZIO.log(s"Parsing: ${meta.galleryUri}")
 
+      url <- ZIO.fromEither(URL.decode(meta.galleryUri))
+
       body <-
-        client.request(request)
+        client.request(configureRequest(url))
           .flatMap(_.body.asString)
           .retry(retryPolicy)
           .mapError(e => NetworkError(e))
           .map(Jsoup.parse(_).body)
 
       title <- ZIO.fromOption(
-        Option(body.selectFirst("h2.title")).orElse(Option(body.selectFirst("h1.title"))).map(_.wholeText)
-      ).mapError(_ => ParsingError(s"Retrive title from meta failed while parsing { ${meta.galleryUri} }"))
+        Option(body.selectFirst("div#bodywrap > h2")).map(_.wholeText)
+      ).mapError(_ => ParsingError(s"Extracting title failed while parsing { ${meta.galleryUri} }"))
 
 
       downloadPage <- ZIO.fromOption(
-        Option(body.selectFirst("h2.title")).orElse(Option(body.selectFirst("h1.title"))).map(_.wholeText)
-      ).mapError(_ => ParsingError(s"Retrive title from meta failed while parsing { ${meta.galleryUri} }"))
+        Option(body.selectFirst("div#ads > a.btn")).map(_.attr("href")).map(path => 
+          s"${url.scheme.get.encode}://${url.host.get}${path}"
+        )
+      ).mapError(_ => ParsingError(s"Extracting download page failed while parsing { ${meta.galleryUri} }"))
 
       pages = 1
 
@@ -121,49 +120,58 @@ class HentaiMangaHandler(
       
       _ <- ZIO.log(s"Parsing: ${page.pageUri}")
 
-      body <- 
-        client.request(configureRequest(page.pageUri))
+      pageUrl <- ZIO.fromEither(URL.decode(page.pageUri))
+
+      body <-
+        client.request(configureRequest(pageUrl))
         .flatMap(_.body.asString)
         .retry(retryPolicy)
         .mapError(NetworkError(_))
         .map(Jsoup.parse(_).body)
 
-      downloadUri <- ZIO.attempt(
-        body.select("section#image-container > a > img").first.attr("src")
+      archiveUri <- ZIO.attempt(
+        body.select("div#adsbox > a.down_btn").first.attr("href")
       )
-      .map(uri => new URI(uri).toURL())
-      .map(url => s"https://${url.getHost()}${url.getPath()}")
-      .mapError(_ => ParsingError(s"Retrive image from page failed while parsing { ${page.pageUri} }"))
+      .map(uri => s"https:${uri}")
+      .map(uri => uri.substring(0, uri.indexOf("?n=")))
+      .mapError(_ => ParsingError(s"Extracting archive from page failed while parsing { ${page.pageUri} }"))
 
-      ref <- FiberRef.make("unknown")
+
+      ref <- FiberRef.make(Either.cond[List[Byte], String](true, "unknown", List[Byte]()))
 
       fireSink = ZSink.collectAllN[Byte](10).map(_.toList).mapZIO(bytes => ref.set(fileExtJudge(bytes)))
 
-      _ <- ZIO.attemptBlockingIO(Files.createDirectories(Paths.get(s"${config.downPath}/${page.path}")))
+      downloadPath = s"${config.downPath}/${UUID.randomUUID().toString()}"
 
-      path = s"${config.downPath}/${page.path}/${page.pageNumber}"
+      _ <- ZIO.log(s"Downloading: ${archiveUri}")
 
-      _ <- ZIO.log(s"Downloading: ${downloadUri}")
-
-      _ <- client.request(Request.get(downloadUri))
+      _ <- client.request(Request.get(archiveUri))
         .map(_.body.asStream)
-        .flatMap(_.timeout(6 hours).tapSink(fireSink).run(ZSink.fromFileName(path)))
+        .flatMap(_.timeout(6 hours).tapSink(fireSink).run(ZSink.fromFileName(downloadPath)))
         .retry(retryPolicy)
         .mapError(NetworkError(_))
 
-      ext <- ref.get
+      preExt <- ref.get
+
+      _ <- ZIO.when(preExt.isLeft)(
+        ZIO.logWarning(s"Unknown file extension is detected, archive uri: { ${archiveUri} }, page uri: { ${page.pageUri} }")
+      )
+
+      ext = preExt.getOrElse("unknown")
+
+      preferedPath = s"${config.downPath}/${page.title}.${ext}"
 
       _ <- ZIO.attemptBlockingIO(
         Files.move(
-          Paths.get(path), 
-          Paths.get(s"${path}.${ext}"), 
+          Paths.get(downloadPath), 
+          Paths.get(preferedPath), 
           StandardCopyOption.REPLACE_EXISTING
         )
       )
       .retry(Schedule.recurs(3) || Schedule.spaced(2 seconds))
       .mapError(FileSystemError(_))
 
-      _ <- ZIO.log(s"Saved: {${downloadUri}} as {${path}.${ext}}")
+      _ <- ZIO.log(s"Saved: { ${archiveUri} } as { ${preferedPath} }")
       
     yield page
 

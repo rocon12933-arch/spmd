@@ -26,6 +26,7 @@ class DownloadHub(
   pageRepo: MangaPageRepo,
   quill: Quill.H2[SnakeCase],
   nhentaiHandler: NHentaiHandler,
+  hentaiMangaHandler: HentaiMangaHandler,
 ):
 
   import quill.*
@@ -61,12 +62,19 @@ class DownloadHub(
       case DownloadValve.Blocking => ZIO.unit
       case DownloadValve.Enabled => acquireMeta(Pending, Interrupted)(Running).mapOption(meta =>
         meta match
-          case nhentai if (true) => {
-            if (nhentai.state == Pending.code)
-              predefStarter(nhentai)(nhentaiHandler)
-            else if (nhentai.state == Interrupted.code)
-              predefResuming(nhentai)(nhentaiHandler)
-            else ZIO.fail(IllegalArgumentException(s"Can't handle such state: ${nhentai.state}"))
+          case m if (config.nhentai.patterns.exists(meta.galleryUri.matches(_))) => {
+            if (m.state == Pending.code)
+              predefStarter(m)(nhentaiHandler)
+            else if (m.state == Interrupted.code)
+              predefResuming(m)(nhentaiHandler)
+            else ZIO.fail(IllegalArgumentException(s"Can't handle such state: ${m.state}"))
+          }
+          case m if (config.hentaiManga.patterns.exists(meta.galleryUri.matches(_))) => {
+            if (m.state == Pending.code)
+              predefStarter(m)(hentaiMangaHandler)
+            else if (m.state == Interrupted.code)
+              predefResuming(m)(hentaiMangaHandler)
+            else ZIO.fail(IllegalArgumentException(s"Can't handle such state: ${m.state}"))
           }
           case nhentai => ZIO.unit
           //case u if (u.matches("")) => hentaiMangaHandler.parseAndRetrivePages(m)
@@ -205,5 +213,6 @@ object DownloadHubLive:
         metaRepo <- ZIO.service[MangaMetaRepo]
         pageRepo <- ZIO.service[MangaPageRepo]
         nhentai <- ZIO.service[NHentaiHandler]
-      yield DownloadHub(config, metaRepo, pageRepo, quill, nhentai)
+        hentaiManga <- ZIO.service[HentaiMangaHandler]
+      yield DownloadHub(config, metaRepo, pageRepo, quill, nhentai, hentaiManga)
     }

@@ -12,7 +12,7 @@ case class MangaPage(
   metaId: Int,
   pageUri: String,
   pageNumber: Int,
-  path: String,
+  title: String,
   state: Short,
 )
 
@@ -105,13 +105,13 @@ class MangaPageRepo(quill: Quill.H2[SnakeCase]):
   }
 
 
-  private inline def queryInsert(metaId: Int, pageUri: String, pageNumber: Int, path: String, state: State) =
+  private inline def queryInsert(metaId: Int, pageUri: String, pageNumber: Int, title: String, state: State) =
     quote { 
       pageQuery.insert(
         _.metaId -> lift(metaId), 
         _.pageNumber -> lift(pageNumber), 
         _.pageUri -> lift(pageUri), 
-        _.path -> lift(path), 
+        _.title -> lift(title), 
         _.state -> lift(state.code)
       )
     }
@@ -124,7 +124,7 @@ class MangaPageRepo(quill: Quill.H2[SnakeCase]):
           _.metaId -> p.metaId, 
           _.pageNumber -> p.pageNumber,
           _.pageUri -> p.pageUri, 
-          _.path -> p.path, 
+          _.title -> p.title, 
           _.state -> p.state,
         )
       )

@@ -99,11 +99,11 @@ class NHentaiHandler(
 
       title <- ZIO.fromOption(
         Option(body.selectFirst("h2.title")).orElse(Option(body.selectFirst("h1.title"))).map(_.wholeText)
-      ).mapError(_ => ParsingError(s"Retrive title from meta failed while parsing { ${meta.galleryUri} }"))
+      ).mapError(_ => ParsingError(s"Extracting title failed while parsing { ${meta.galleryUri} }"))
 
       pages <- ZIO.attempt(
         body.select("span.tags > a.tag > span.name").last.text.toInt
-      ).mapError(_ => ParsingError(s"Retrive pages from meta failed while parsing { ${meta.galleryUri} }"))
+      ).mapError(_ => ParsingError(s"Extracting pages failed while parsing { ${meta.galleryUri} }"))
 
       parsedMeta = meta.copy(state = 2, title = title, totalPages = pages)
 
@@ -140,15 +140,15 @@ class NHentaiHandler(
 
       imgUri <- ZIO.attempt(
         body.select("section#image-container > a > img").first.attr("src")
-      ).mapError(_ => ParsingError(s"Retrive image from page failed while parsing { ${page.pageUri} }"))
+      ).mapError(_ => ParsingError(s"Extracting image uri failed while parsing { ${page.pageUri} }"))
 
       ref <- FiberRef.make("unknown")
 
       fireSink = ZSink.collectAllN[Byte](10).map(_.toList).mapZIO(bytes => ref.set(fileExtJudge(bytes)))
 
-      _ <- ZIO.attemptBlockingIO(Files.createDirectories(Paths.get(s"${config.downPath}/${page.path}")))
+      _ <- ZIO.attemptBlockingIO(Files.createDirectories(Paths.get(s"${config.downPath}/${page.title}")))
 
-      path = s"${config.downPath}/${page.path}/${page.pageNumber}"
+      path = s"${config.downPath}/${page.title}/${page.pageNumber}"
 
       _ <- ZIO.log(s"Downloading: ${imgUri}")
 
