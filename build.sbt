@@ -1,4 +1,4 @@
-ThisBuild / scalaVersion     := "3.4.1"
+ThisBuild / scalaVersion     := "3.4.2"
 ThisBuild / version          := "0.0.1"
 ThisBuild / organization     := "moe.karla"
 
@@ -24,7 +24,7 @@ ThisBuild / assemblyMergeStrategy := {
 lazy val root = (project in file("."))
   .settings(
     name := "spmd-zio",
-    scalaVersion := "3.4.1",
+    scalaVersion := "3.4.2",
     scalacOptions ++= Seq("-Ykind-projector:underscores", "-language:postfixOps"),
     javacOptions ++= Seq("-source", "17", "-target", "17"),
     libraryDependencies ++= Seq(
