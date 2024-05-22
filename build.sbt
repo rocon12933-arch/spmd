@@ -16,6 +16,8 @@ assembly / assemblyJarName := "Spmd-zio_0.0.1.jar"
 
 ThisBuild / assemblyMergeStrategy := {
   case PathList(ps @ _*) if ps.last == "module-info.class" => MergeStrategy.discard
+  case PathList(ps @ _*) if ps.contains("getquill")  => MergeStrategy.preferProject
+  case PathList(ps @ _*) if ps.last == "io.netty.versions.properties"  => MergeStrategy.first
   case x =>
     val oldStrategy = (ThisBuild / assemblyMergeStrategy).value
     oldStrategy(x)
@@ -48,7 +50,7 @@ lazy val root = (project in file("."))
       "dev.zio" %% "zio-json" % "0.6.2",
       
       "com.zaxxer" % "HikariCP" % "5.1.0",
-      "org.xerial" % "sqlite-jdbc" % "3.45.3.0",
+      //"org.xerial" % "sqlite-jdbc" % "3.45.3.0",
       //"org.apache.derby" % "derby" % "10.15.2.0",
       "com.h2database" % "h2" % "2.2.224",
       "org.flywaydb" % "flyway-core" % "10.10.0",

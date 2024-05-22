@@ -85,15 +85,17 @@ class HentaiMangaHandler(
           .map(Jsoup.parse(_).body)
 
       title <- ZIO.fromOption(
-        Option(body.selectFirst("div#bodywrap > h2")).map(_.wholeText)
-      ).mapError(_ => ParsingError(s"Extracting title failed while parsing { ${meta.galleryUri} }"))
+        Option(body.selectFirst("div#bodywrap > h2"))
+          .map(_.wholeText.filtered)
+          .collect { case s: String if s.size > 0 => s }
+      ).mapError(_ => ParsingError(s"Extracting title failed while parsing ${meta.galleryUri}"))
 
 
       downloadPage <- ZIO.fromOption(
         Option(body.selectFirst("div#ads > a.btn")).map(_.attr("href")).map(path => 
           s"${url.scheme.get.encode}://${url.host.get}${path}"
         )
-      ).mapError(_ => ParsingError(s"Extracting download page failed while parsing { ${meta.galleryUri} }"))
+      ).mapError(_ => ParsingError(s"Extracting download page failed while parsing ${meta.galleryUri}"))
 
       pages = 1
 
@@ -134,7 +136,7 @@ class HentaiMangaHandler(
       )
       .map(uri => s"https:${uri}")
       .map(uri => uri.substring(0, uri.indexOf("?n=")))
-      .mapError(_ => ParsingError(s"Extracting archive from page failed while parsing { ${page.pageUri} }"))
+      .mapError(_ => ParsingError(s"Extracting archive uri from page failed while parsing ${page.pageUri}"))
 
 
       ref <- FiberRef.make(Either.cond[List[Byte], String](true, "unknown", List[Byte]()))
@@ -154,24 +156,24 @@ class HentaiMangaHandler(
       preExt <- ref.get
 
       _ <- ZIO.when(preExt.isLeft)(
-        ZIO.logWarning(s"Unknown file extension is detected, archive uri: { ${archiveUri} }, page uri: { ${page.pageUri} }")
+        ZIO.logWarning(s"Unknown file signature is detected, archive uri: ${archiveUri}, page uri: ${page.pageUri}")
       )
 
       ext = preExt.getOrElse("unknown")
 
-      preferedPath = s"${config.downPath}/${page.title}.${ext}"
+      preferringPath = s"${config.downPath}/${page.title}.${ext}"
 
       _ <- ZIO.attemptBlockingIO(
         Files.move(
           Paths.get(downloadPath), 
-          Paths.get(preferedPath), 
+          Paths.get(preferringPath), 
           StandardCopyOption.REPLACE_EXISTING
         )
       )
       .retry(Schedule.recurs(3) || Schedule.spaced(2 seconds))
       .mapError(FileSystemError(_))
 
-      _ <- ZIO.log(s"Saved: { ${archiveUri} } as { ${preferedPath} }")
+      _ <- ZIO.log(s"Saved: ${archiveUri} as ${preferringPath}")
       
     yield page
 
@@ -179,9 +181,12 @@ class HentaiMangaHandler(
 
 
 object HentaiMangaHandlerLive:
+  /*
   val layer = 
     ZLayer {
       for
         config <- ZIO.service[AppConfig]
       yield HentaiMangaHandler(config)
     }
+  */
+  val layer = ZLayer.derive[HentaiMangaHandler]

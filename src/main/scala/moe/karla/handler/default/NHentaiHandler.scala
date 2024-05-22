@@ -99,11 +99,11 @@ class NHentaiHandler(
 
       title <- ZIO.fromOption(
         Option(body.selectFirst("h2.title")).orElse(Option(body.selectFirst("h1.title"))).map(_.wholeText)
-      ).mapError(_ => ParsingError(s"Extracting title failed while parsing { ${meta.galleryUri} }"))
+      ).mapError(_ => ParsingError(s"Extracting title failed while parsing ${meta.galleryUri}"))
 
       pages <- ZIO.attempt(
         body.select("span.tags > a.tag > span.name").last.text.toInt
-      ).mapError(_ => ParsingError(s"Extracting pages failed while parsing { ${meta.galleryUri} }"))
+      ).mapError(_ => ParsingError(s"Extracting pages failed while parsing ${meta.galleryUri}"))
 
       parsedMeta = meta.copy(state = 2, title = title, totalPages = pages)
 
@@ -133,18 +133,28 @@ class NHentaiHandler(
 
       body <- 
         client.request(configureRequest(page.pageUri))
-        .flatMap(_.body.asString)
-        .retry(retryPolicy)
-        .mapError(NetworkError(_))
-        .map(Jsoup.parse(_).body)
+          .flatMap { resp =>
+            if (resp.status.code == 403) ZIO.fail(BypassError(s"A cloudflare blocking presents while parsing: ${page.pageUri}"))
+            else resp.body.asString
+          }
+          .retry(retryPolicy && Schedule.recurWhile[Throwable] {
+            case _: BypassError => false
+            case _ => true 
+          })
+          .mapError(e =>
+            e match
+              case b: BypassError => b
+              case _ => NetworkError(e) 
+          )
+          .map(Jsoup.parse(_).body)
 
       imgUri <- ZIO.attempt(
         body.select("section#image-container > a > img").first.attr("src")
-      ).mapError(_ => ParsingError(s"Extracting image uri failed while parsing { ${page.pageUri} }"))
+      ).mapError(_ => ParsingError(s"Extracting image uri failed while parsing ${page.pageUri}"))
 
       ref <- FiberRef.make("unknown")
 
-      fireSink = ZSink.collectAllN[Byte](10).map(_.toList).mapZIO(bytes => ref.set(fileExtJudge(bytes)))
+      fireSink = ZSink.collectAllN[Byte](6).map(_.toList).mapZIO(bytes => ref.set(fileExtJudge(bytes)))
 
       _ <- ZIO.attemptBlockingIO(Files.createDirectories(Paths.get(s"${config.downPath}/${page.title}")))
 
@@ -170,15 +180,18 @@ class NHentaiHandler(
       .retry(Schedule.recurs(3) || Schedule.spaced(2 seconds))
       .mapError(FileSystemError(_))
 
-      _ <- ZIO.log(s"Saved: {${imgUri}} as {${path}.${ext}}")
+      _ <- ZIO.log(s"Saved: ${imgUri} as ${path}.${ext}")
       
     yield page
 
 
 object NHentaiHandlerLive:
+  /*
   val layer = 
     ZLayer {
       for
         config <- ZIO.service[AppConfig]
       yield NHentaiHandler(config)
     }
+  */
+  val layer = ZLayer.derive[NHentaiHandler]
