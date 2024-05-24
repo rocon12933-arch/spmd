@@ -99,7 +99,7 @@ class HentaiMangaHandler(
 
       pages = 1
 
-      parsedMeta = meta.copy(state = MangaMeta.State.Parsed.code, title = title, totalPages = pages)
+      parsedMeta = meta.copy(state = MangaMeta.State.Pending.code, title = title, totalPages = pages)
 
       parsedPages =
         List(

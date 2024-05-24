@@ -1,17 +1,19 @@
 /* H2 Style*/
---state: 0:pending 1:parsing 2:parsed 3:running 4:completed -1:failed -2:interrupted
+--state: 0:pending 1:running 2:completed -1:failed -2:interrupted
 create table manga_meta(
   id int generated always as identity,
   gallery_uri varchar(500) not null,
+  is_parsed boolean not null default false,
   title varchar(500) not null,
   total_pages int not null,
   completed_pages int not null,
   state smallint not null,
-  cause varchar(500)
+  cause varchar(500),
+  created_at timestamp not null default CURRENT_TIMESTAMP
 );
 
 
---status: 0:pending 1:running 2:completed -1:failed (-2:interrupted (deprecated))
+--status: 0:pending 1:running 2:completed -1:failed
 create table manga_page(
   id int generated always as identity,
   page_uri varchar(500) not null,

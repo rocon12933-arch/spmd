@@ -8,12 +8,14 @@ import io.getquill.*
 import io.getquill.jdbczio.Quill
 
 import java.sql.SQLException
+import java.sql.Timestamp
 
 
 
 case class MangaMeta(
   id: Int,
   galleryUri: String,
+  isParsed: Boolean,
   title: String,
   totalPages: Int,
   completedPages: Int,
@@ -23,22 +25,19 @@ case class MangaMeta(
 
 object MangaMeta:
 
+
   given encoder: JsonEncoder[MangaMeta] = DeriveJsonEncoder.gen[MangaMeta]
 
   enum State(val code: Short):
     case Pending extends State(0)
-    case Parsing extends State(1)
-    case Parsed extends State(2)
-    case Running extends State(3)
-    case Completed extends State(4)
+    case Running extends State(1)
+    case Completed extends State(2)
     case Failed extends State(-1)
     case Interrupted extends State(-2)
 
     def fromCode(code: Short) = 
       code match 
         case Pending.code => Pending
-        case Parsing.code => Parsing
-        case Parsed.code => Parsed
         case Running.code => Running
         case Completed.code => Completed
         case Failed.code => Failed
@@ -108,10 +107,17 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
   }
 
 
-  private inline def queryInsert(galleryUri: String, title: String, totalPages: Int, state: Short) =
+  private inline def queryInsert(
+    galleryUri: String, 
+    isParsed: Boolean, 
+    title: String, 
+    totalPages: Int, 
+    state: Short
+  ) =
     quote { 
       metaQuery.insert(
         _.galleryUri -> lift(galleryUri),
+        _.isParsed -> lift(isParsed),
         _.title -> lift(title),
         _.totalPages -> lift(totalPages),
         _.state -> lift(state),
@@ -125,6 +131,7 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
       liftQuery(li).foreach(p =>
         metaQuery.insert(
           _.galleryUri -> p.galleryUri, 
+          _.isParsed -> p.isParsed,
           _.totalPages -> p.totalPages,
           _.title -> p.title, 
           _.completedPages -> 0, 
@@ -166,9 +173,9 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
   def delete(id: Int) = run(queryDelete(id)).map(_ > 0)
 
   
-  def create(galleryUri: String, title: String, totalPages: Int, state: State) = 
+  def create(galleryUri: String, isParsed: Boolean, title: String, totalPages: Int, state: State) = 
     transaction(
-      run(queryInsert(galleryUri, title, totalPages, state.code)) *>
+      run(queryInsert(galleryUri, isParsed, title, totalPages, state.code)) *>
       run(metaQuery.filter(_.galleryUri == lift(galleryUri)).map(_.id).take(1))
     )
     //.mapError(SQLException(_))
@@ -203,8 +210,14 @@ object MangaMetaRepo:
   def updateState(id: Int, state: MangaMeta.State) = ZIO.serviceWithZIO[MangaMetaRepo](_.updateState(id, state))
 
 
-  def create(galleryUri: String, title: String, totalPages: Int, state: MangaMeta.State) =
-    ZIO.serviceWithZIO[MangaMetaRepo](_.create(galleryUri, title, totalPages, state))
+  def create(
+    galleryUri: String, 
+    isParsed: Boolean, 
+    title: String, 
+    totalPages: Int, 
+    state: MangaMeta.State
+  ) =
+    ZIO.serviceWithZIO[MangaMetaRepo](_.create(galleryUri, isParsed, title, totalPages, state))
 
 
   def delete(id: Int) = ZIO.serviceWithZIO[MangaMetaRepo](_.delete(id))

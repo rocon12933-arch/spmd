@@ -36,11 +36,13 @@ object TaskEndpoint:
 
       PrettyMangaMeta(
         m.id, m.galleryUri, m.title, m.state match
-          case Failed.code => "Failed"
+          case Pending.code => "Pending"
           case Running.code => s"${m.completedPages} / ${m.totalPages}"
-          case Parsed.code => "Parsed"
           case Completed.code => "Completed"
-          case _ => "Pending"
+          case Failed.code => "Failed"
+          case Interrupted.code => "Interrupted"
+          
+          case _ => throw IllegalArgumentException("Undefined code") 
       )
     }
 
@@ -64,7 +66,7 @@ object TaskEndpoint:
           )
         _ <-
           if (lines.size > 0) 
-            MangaMetaRepo.batchCreate(lines.map(MangaMeta(0, _, "", 0, 0, MangaMeta.State.Pending.code, None)))
+            MangaMetaRepo.batchCreate(lines.map(MangaMeta(0, _, false, "", 0, 0, MangaMeta.State.Pending.code, None)))
           else ZIO.unit
 
       yield if (lines.size > 0) Response.json(lines.toJsonPretty) else Response.badRequest

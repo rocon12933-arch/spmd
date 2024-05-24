@@ -25,9 +25,9 @@ class PrepareService(
   quill: Quill.H2[SnakeCase],
 ):
 
-  def execute = 
-    metaRepo.updateStateIn(MangaMeta.State.Running)(MangaMeta.State.Interrupted) *>
-    pageRepo.updateStateIn(MangaPage.State.Running)(MangaPage.State.Pending)
+  def execute =
+    metaRepo.updateStateIn(MangaMeta.State.Running, MangaMeta.State.Failed)(MangaMeta.State.Pending) *>
+      pageRepo.updateStateIn(MangaPage.State.Running, MangaPage.State.Failed)(MangaPage.State.Pending)
 
 
 object PrepareService:
