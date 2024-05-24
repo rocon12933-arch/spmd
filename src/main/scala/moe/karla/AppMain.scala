@@ -38,7 +38,7 @@ object AppMain extends ZIOAppDefault:
 
   def run =
     FlywayMigration.runMigrate *>
-    (ZIO.stateful(DownloadValve.Enabled)(
+    ZIO.stateful(DownloadValve.Enabled)(
       for
         config <- ZIO.service[AppConfig]
         _ <- ZIO.attemptBlockingIO(Files.createDirectories(Paths.get(config.downPath)))
@@ -48,7 +48,7 @@ object AppMain extends ZIOAppDefault:
         _ <- ZIO.log(s"Server started @ ${config.host}:${port}")
         _ <- ZIO.never
       yield ExitCode.success
-    ))
+    )
     .provide(
       dataSourceLayer, AppConfig.layer,
       NHentaiHandlerLive.layer,
