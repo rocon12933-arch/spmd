@@ -73,7 +73,7 @@ class HentaiMangaHandler(
     for
       client <- ZIO.service[Client]
 
-      _ <- ZIO.log(s"Parsing: ${meta.galleryUri}")
+      _ <- ZIO.log(s"Parsing: '${meta.galleryUri}'")
 
       url <- ZIO.fromEither(URL.decode(meta.galleryUri))
 
@@ -88,14 +88,14 @@ class HentaiMangaHandler(
         Option(body.selectFirst("div#bodywrap > h2"))
           .map(_.wholeText.filtered)
           .collect { case s: String if s.size > 0 => s }
-      ).mapError(_ => ParsingError(s"Extracting title failed while parsing ${meta.galleryUri}"))
+      ).mapError(_ => ParsingError(s"Extracting title failed while parsing '${meta.galleryUri}'"))
 
 
       downloadPage <- ZIO.fromOption(
         Option(body.selectFirst("div#ads > a.btn")).map(_.attr("href")).map(path => 
           s"${url.scheme.get.encode}://${url.host.get}${path}"
         )
-      ).mapError(_ => ParsingError(s"Extracting download page failed while parsing ${meta.galleryUri}"))
+      ).mapError(_ => ParsingError(s"Extracting download page failed while parsing '${meta.galleryUri}'"))
 
       pages = 1
 
@@ -120,7 +120,7 @@ class HentaiMangaHandler(
     for
       client <- ZIO.service[Client]
       
-      _ <- ZIO.log(s"Parsing: ${page.pageUri}")
+      _ <- ZIO.log(s"Parsing: '${page.pageUri}'")
 
       pageUrl <- ZIO.fromEither(URL.decode(page.pageUri))
 
@@ -136,7 +136,7 @@ class HentaiMangaHandler(
       )
       .map(uri => s"https:${uri}")
       .map(uri => uri.substring(0, uri.indexOf("?n=")))
-      .mapError(_ => ParsingError(s"Extracting archive uri from page failed while parsing ${page.pageUri}"))
+      .mapError(_ => ParsingError(s"Extracting archive uri from page failed while parsing '${page.pageUri}'"))
 
 
       ref <- FiberRef.make(Either.cond[List[Byte], String](true, "unknown", List[Byte]()))
@@ -145,18 +145,21 @@ class HentaiMangaHandler(
 
       downloadPath = s"${config.downPath}/${UUID.randomUUID().toString()}"
 
-      _ <- ZIO.log(s"Downloading: ${archiveUri}")
+      _ <- ZIO.log(s"Downloading: '${archiveUri}'")
 
       _ <- client.request(Request.get(archiveUri))
         .map(_.body.asStream)
         .flatMap(_.timeout(6 hours).tapSink(fireSink).run(ZSink.fromFileName(downloadPath)))
+        .tapError(e => ZIO.logError(s"Exception is raised when downloading: '${archiveUri}'. retry."))
         .retry(retryPolicy)
         .mapError(NetworkError(_))
+        .tapError(e => ZIO.logError(s"Exception is raised when downloading: '${archiveUri}'. abort."))
+
 
       preExt <- ref.get
 
       _ <- ZIO.when(preExt.isLeft)(
-        ZIO.logWarning(s"Unknown file signature is detected, archive uri: ${archiveUri}, page uri: ${page.pageUri}")
+        ZIO.logWarning(s"Unknown file signature is detected, archive uri: '${archiveUri}', page uri: '${page.pageUri}'")
       )
 
       ext = preExt.getOrElse("unknown")
@@ -173,7 +176,7 @@ class HentaiMangaHandler(
       .retry(Schedule.recurs(3) || Schedule.spaced(2 seconds))
       .mapError(FileSystemError(_))
 
-      _ <- ZIO.log(s"Saved: ${archiveUri} as ${preferringPath}")
+      _ <- ZIO.log(s"Saved: '${archiveUri}' as '${preferringPath}'")
       
     yield page
 

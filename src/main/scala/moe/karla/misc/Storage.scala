@@ -15,7 +15,6 @@ object Storage:
   
   def dataSource(poolSize: Int) = {
     val config = new HikariConfig()
-    //config.setJdbcUrl("jdbc:sqlite:./data.db")
     //config.setDataSourceClassName("org.h2.jdbcx.JdbcDataSource")
     config.setJdbcUrl("jdbc:h2:./data")
     config.setUsername("sa")
@@ -25,7 +24,7 @@ object Storage:
   }
   
 
-  def dataSourceLayer = Quill.DataSource.fromDataSource(dataSource(1))
+  def dataSourceLayer = Quill.DataSource.fromDataSource(dataSource(poolSize = 1))
   
   /*
   def dataSourceLayer = Quill.DataSource.fromPrefix("db")

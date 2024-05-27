@@ -30,7 +30,7 @@ object FlywayMigration:
   
   def runMigrate: IO[IOException, MigrateResult] = {
 
-    def acquire = ZIO.attemptBlockingIO(Storage.dataSource(3))
+    def acquire = ZIO.attemptBlockingIO(Storage.dataSource(poolSize = 3))
     def release(ds: HikariDataSource) = ZIO.attemptBlockingIO(ds.close()).orDie
 
     ZIO.acquireReleaseWith(acquire)(release)(ds => ZIO.attemptBlockingIO(

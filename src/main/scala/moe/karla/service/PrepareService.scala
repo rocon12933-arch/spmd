@@ -26,8 +26,13 @@ class PrepareService(
 ):
 
   def execute =
-    metaRepo.updateStateIn(MangaMeta.State.Running, MangaMeta.State.Failed)(MangaMeta.State.Pending) *>
+    if (config.resetFailureOnBoot)
+      metaRepo.updateState(isParsed = true, MangaMeta.State.Running, MangaMeta.State.Failed)(MangaMeta.State.Pending) *>
       pageRepo.updateStateIn(MangaPage.State.Running, MangaPage.State.Failed)(MangaPage.State.Pending)
+    else
+      metaRepo.updateState(isParsed = true, MangaMeta.State.Running)(MangaMeta.State.Pending) *>
+      pageRepo.updateStateIn(MangaPage.State.Running)(MangaPage.State.Pending)
+
 
 
 object PrepareService:

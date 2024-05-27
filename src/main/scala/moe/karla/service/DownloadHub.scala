@@ -60,17 +60,19 @@ class DownloadHub(
 
     ZIO.whenCaseZIO(ZIO.getState[DownloadValve]) {
       case DownloadValve.Blocking => ZIO.unit
-      case DownloadValve.Enabled => acquireMeta(Pending)(Running).mapOption(meta =>
-        meta match
-          case m if (config.nhentai.patterns.exists(meta.galleryUri.matches(_))) => {
-            if (m.isParsed) predefResuming(m)(nhentaiHandler)
-            else predefStarter(m)(nhentaiHandler)
+      case DownloadValve.Enabled => acquireMeta(Pending)(Running).mapOption(
+        _ match
+          case meta if (config.nhentai.patterns.exists(meta.galleryUri.matches(_))) => {
+            if (meta.isParsed) predefResuming(meta)(nhentaiHandler)
+            else predefStarter(meta)(nhentaiHandler)
           }
-          case m if (config.hentaiManga.patterns.exists(meta.galleryUri.matches(_))) => {
-            if (m.isParsed) predefResuming(m)(hentaiMangaHandler)
-            else predefStarter(m)(hentaiMangaHandler)
+          case meta if (config.hentaiManga.patterns.exists(meta.galleryUri.matches(_))) => {
+            if (meta.isParsed) predefResuming(meta)(hentaiMangaHandler)
+            else predefStarter(meta)(hentaiMangaHandler)
           }
-          case _ => metaRepo.updateState(meta.id, Failed)
+          case m => 
+            metaRepo.updateFastly(m.copy(state = Failed.code, cause = Some("No compatible handler"))) *> 
+            ZIO.logError(s"No compatible handler for '${m.galleryUri}'")
       )
     }
     .catchAll(e => ZIO.logError(s"Error: ${e.getMessage()}"))
@@ -85,14 +87,18 @@ class DownloadHub(
 
     for
       tup <- handler.parseAndRetrivePages(meta)
-        .tapError(_ => ZIO.setState(Blocking) *> metaRepo.updateState(meta.id, Failed))
+        .tapError: e => 
+          ZIO.setState(Blocking) *>
+          ZIO.logError(e.getMessage()) *>
+          metaRepo.updateFastly(meta.copy(isParsed = false, state = Failed.code, cause = Some(e.getMessage())))
 
       (m, lp) = tup
 
-      _ <- quill.transaction(
+      _ <- 
+        quill.transaction(
           metaRepo.update(m.copy(isParsed = true, state = Running.code)) *> pageRepo.batchCreate(lp)
         )
-        .flatMap(_ => ZIO.log(s"Meta is saved: ${m.title}"))
+        .flatMap(_ => ZIO.log(s"Meta is saved: '${m.title}'"))
 
       signal <- FiberRef.make(true)
 
@@ -121,10 +127,9 @@ class DownloadHub(
                           metaRepo.increaseCompletedPages(m.id) *> ZIO.when(m.completedPages + 1 >= m.totalPages)(
                             (
                               if (config.dequeueIfCompleted) metaRepo.delete(m.id)
-                              else 
-                                metaRepo.increaseCompletedPages(m.id) *> 
-                                  metaRepo.updateState(m.id, MangaMeta.State.Completed)
-                            ) *> ZIO.log(s"Completed: ${m.title}") *> signal.set(false)
+                              else metaRepo.updateState(m.id, MangaMeta.State.Completed)
+                            ) *>
+                              ZIO.log(s"Completed: '${m.title}'") *> signal.set(false)
                           )
                         )
                       ) <* ZIO.sleep(2 seconds)
@@ -147,45 +152,45 @@ class DownloadHub(
 
       _ <- metaRepo.update(meta.copy(state = MangaMeta.State.Running.code))
 
-      _ <- ZStream.fromIterable(meta.completedPages until meta.totalPages).mapZIOParUnordered(config.parallelPages)(_ =>
+      _ <- 
+        ZStream.fromIterable(meta.completedPages until meta.totalPages).mapZIOParUnordered(config.parallelPages)(_ =>
 
-        import MangaPage.State.*
+          import MangaPage.State.*
 
-        ZIO.whenCaseZIO(ZIO.getState[DownloadValve]) {
+          ZIO.whenCaseZIO(ZIO.getState[DownloadValve]) {
 
-          case DownloadValve.Blocking => ZIO.unit
-          
-          case DownloadValve.Enabled =>
-            ZIO.ifZIO(signal.get)(
-              onTrue = 
-                acquirePage(meta.id, Pending)(Running).mapOption(page =>
-                  for 
-                    _ <- handler.download(page).tapError(_ => 
-                      transaction(
-                        pageRepo.updateState(page.id, Failed) *> 
-                          metaRepo.updateState(meta.id, MangaMeta.State.Failed)
-                      ) *> signal.set(false)
-                    )
-                    _ <- transaction(
-                      pageRepo.delete(page.id) *> metaRepo.getOption(page.metaId).mapOption(m =>
-                        metaRepo.increaseCompletedPages(m.id) *> ZIO.when(m.completedPages + 1 >= m.totalPages)(
-                          (
-                            if (config.dequeueIfCompleted) metaRepo.delete(m.id)
-                            else 
-                              metaRepo.increaseCompletedPages(m.id) *> 
-                                metaRepo.updateState(m.id, MangaMeta.State.Completed)
-                          ) *> ZIO.log(s"Completed: ${m.title}") *> signal.set(false)
-                        )
+            case DownloadValve.Blocking => ZIO.unit
+            
+            case DownloadValve.Enabled =>
+              ZIO.ifZIO(signal.get)(
+                onTrue = 
+                  acquirePage(meta.id, Pending)(Running).mapOption(page =>
+                    for 
+                      _ <- handler.download(page).tapError(_ => 
+                        transaction(
+                          pageRepo.updateState(page.id, Failed) *> 
+                            metaRepo.updateState(meta.id, MangaMeta.State.Failed)
+                        ) *> signal.set(false)
                       )
-                    ) <* ZIO.sleep(2 seconds)
-                  yield ()
-                ),
-              onFalse = ZIO.unit
-            )
-        }
-      )
-      .runDrain
-      .tapError(_ => metaRepo.updateState(meta.id, MangaMeta.State.Failed))
+                      _ <- transaction(
+                        pageRepo.delete(page.id) *> metaRepo.getOption(page.metaId).mapOption(m =>
+                          metaRepo.increaseCompletedPages(m.id) *> ZIO.when(m.completedPages + 1 >= m.totalPages)(
+                            (
+                              if (config.dequeueIfCompleted) metaRepo.delete(m.id)
+                              else metaRepo.updateState(m.id, MangaMeta.State.Completed)
+                            ) *> 
+                              ZIO.log(s"Completed: '${m.title}'") *> signal.set(false)
+                          )
+                        )
+                      ) <* ZIO.sleep(2 seconds)
+                    yield ()
+                  ),
+                onFalse = ZIO.unit
+              )
+          }
+        )
+        .runDrain
+        .tapError(_ => metaRepo.updateState(meta.id, MangaMeta.State.Failed))
     yield ()
 
 

@@ -81,9 +81,19 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
     metaQuery.filter(_.state == lift(state.code)).take(1)
   }
 
+
+  private inline def queryGetFirstByIsParsedAndState(isParsed: Boolean, state: State) = quote {
+    metaQuery.filter(_.state == lift(state.code)).filter(_.isParsed == lift(isParsed)).take(1)
+  }
+
   
   private inline def queryGetFirstByStateIn(states: Seq[State]) = quote {
     metaQuery.filter(m => liftQuery(states.map(_.code)).contains(m.state)).take(1)
+  }
+
+
+  private inline def queryGetFirstByIsParsedAndStateIn(isParsed: Boolean, states: Seq[State]) = quote {
+    metaQuery.filter(m => liftQuery(states.map(_.code)).contains(m.state)).filter(_.isParsed == lift(isParsed)).take(1)
   }
 
 
@@ -92,8 +102,13 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
   }
 
 
-  private inline def queryUpdateStateIn(states: Seq[State])(newState: State) = quote {
+  private inline def queryUpdateState(states: Seq[State])(newState: State) = quote {
     metaQuery.filter(m => liftQuery(states.map(_.code)).contains(m.state)).update(_.state -> lift(newState.code))
+  }
+
+
+  private inline def queryUpdateState(isParsed: Boolean, states: Seq[State])(newState: State) = quote {
+    metaQuery.filter(_.isParsed == lift(isParsed)).filter(m => liftQuery(states.map(_.code)).contains(m.state)).update(_.state -> lift(newState.code))
   }
 
 
@@ -189,8 +204,15 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
   def getFirstByStateInOption(state: State*) = 
     run(queryGetFirstByStateIn(state)).map(_.headOption)
 
+
+  def getFirstByStateInOption(isParsed: Boolean, state: State*) = 
+    run(queryGetFirstByIsParsedAndStateIn(isParsed, state)).map(_.headOption)
+
   
-  def updateStateIn(states: State*)(newState: State) = run(queryUpdateStateIn(states)(newState))
+  def updateState(states: State*)(newState: State) = run(queryUpdateState(states)(newState))
+
+
+  def updateState(isParsed: Boolean, states: State*)(newState: State) = run(queryUpdateState(isParsed, states)(newState))
 
 
   def batchCreate(li: List[MangaMeta]) = run(batchInsert(li))
