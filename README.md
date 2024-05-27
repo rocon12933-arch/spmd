@@ -1,2 +1,2 @@
-My demo project to fetch ero comics from nhentai.net.It's now incomplete.
+My pratice project to fetch comics.It's currently incomplete.
 To use request.ps1 to send urls to localhost:8749
