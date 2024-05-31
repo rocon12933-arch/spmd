@@ -135,7 +135,7 @@ class NHentaiHandler(
     for
       client <- ZIO.service[Client]
       
-      _ <- ZIO.log(s"Parsing: ${page.pageUri}")
+      _ <- ZIO.log(s"Parsing: '${page.pageUri}'")
 
       req <- configureRequest(page.pageUri)
 
