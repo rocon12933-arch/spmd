@@ -81,6 +81,18 @@ object TaskEndpoint:
             MangaMetaRepo.delete(meta.id) *> MangaPageRepo.deleteByMetaId(meta.id)
           )) *> ZIO.succeed(Response.ok)
       yield resp
+    },
+
+    Method.POST / "task" / int("id") / "reset" -> handler { (id: Int, _: Request) =>
+      for
+        opt <- MangaMetaRepo.getOption(id)
+        resp <- opt match
+          case None => ZIO.succeed(Response.notFound)
+          case Some(meta) => ZIO.serviceWithZIO[Quill.H2[SnakeCase]](_.transaction(
+            MangaMetaRepo.updateState(meta.id, MangaMeta.State.Pending) *>
+              MangaPageRepo.updateStateIn(meta.id, MangaPage.State.Failed)(MangaPage.State.Pending)
+          )) *> ZIO.succeed(Response.ok)
+      yield resp
     }
   )
   .handleError(e =>

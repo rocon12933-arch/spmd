@@ -144,19 +144,19 @@ class MangaPageRepo(quill: Quill.H2[SnakeCase]):
   def updateAllState(state: State) = run(queryUpdateAllState(state))
 
 
+  def updateState(id: Int, state: State) = run(queryUpdateState(id, state)).map(_ > 0)
+
+
   def updateStateIn(state: State*)(newState: State) = run(queryUpdateStateIn(state)(newState))
 
 
-  def updateState(id: Int, state: State) = run(queryUpdateState(id, state)).map(_ > 0)
+  def updateStateIn(metaId: Int, in: State*)(newState: State) = 
+    run(queryUpdateStateIn(metaId, newState, in))
 
 
   def updateStateExcept(metaId: Int, excepts: State*)(newState: State) = 
     run(queryUpdateStateExcept(metaId, newState, excepts))
 
-
-  def updateStateIn(metaId: Int, in: State*)(newState: State) = 
-    run(queryUpdateStateIn(metaId, newState, in))
-  
 
   def batchCreate(li: List[MangaPage]) = 
     run(batchInsert(li))
@@ -179,10 +179,12 @@ class MangaPageRepo(quill: Quill.H2[SnakeCase]):
     
 object MangaPageRepo:
 
+  import MangaPage.State
+
   def getOption(id: Int) = ZIO.serviceWithZIO[MangaPageRepo](_.getOption(id))
 
    
-  def create(metaId: Int, pageUri: String, pageNumber: Int, path: String, State: MangaPage.State) = 
+  def create(metaId: Int, pageUri: String, pageNumber: Int, path: String, State: State) = 
     ZIO.serviceWithZIO[MangaPageRepo](_.create(metaId, pageUri, pageNumber, path, State))
    
 
@@ -190,7 +192,13 @@ object MangaPageRepo:
     ZIO.serviceWithZIO[MangaPageRepo](_.batchCreate(li))
 
 
-  def updateState(id: Int, State: MangaPage.State) = ZIO.serviceWithZIO[MangaPageRepo](_.updateState(id, State))
+  def updateState(id: Int, state: State) = ZIO.serviceWithZIO[MangaPageRepo](_.updateState(id, state))
+
+
+  def updateStateIn(states: State*)(newState: State) = ZIO.serviceWithZIO[MangaPageRepo](_.updateStateIn(states*)(newState))
+
+
+  def updateStateIn(metaId: Int, states: State*)(newState: State) = ZIO.serviceWithZIO[MangaPageRepo](_.updateStateIn(metaId, states*)(newState))
 
   
   def delete(id: Int) = ZIO.serviceWithZIO[MangaPageRepo](_.delete(id))
