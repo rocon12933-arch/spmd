@@ -22,8 +22,6 @@ final case class AppConfig(
 
   parallelGalleries: Int,
 
-  resetFailureOnBoot: Boolean,
-
   dequeueIfCompleted: Boolean,
 
   nhentai: NHentaiConfig,

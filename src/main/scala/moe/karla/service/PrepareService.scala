@@ -26,14 +26,9 @@ class PrepareService(
 ):
 
   def execute =
-    if (config.resetFailureOnBoot)
-      quill.transaction:
-        metaRepo.updateStateIn(isParsed = true, MangaMeta.State.Running, MangaMeta.State.Failed)(MangaMeta.State.Pending) *>
-          pageRepo.updateStateIn(MangaPage.State.Running, MangaPage.State.Failed)(MangaPage.State.Pending)
-    else
-      quill.transaction:
-        metaRepo.updateStateIn(isParsed = true, MangaMeta.State.Running)(MangaMeta.State.Pending) *>
-          pageRepo.updateStateIn(MangaPage.State.Running)(MangaPage.State.Pending)
+    quill.transaction:
+      metaRepo.updateStateIn(MangaMeta.State.Running)(MangaMeta.State.Pending) *>
+        pageRepo.updateStateIn(MangaPage.State.Running)(MangaPage.State.Pending)
 
 
 

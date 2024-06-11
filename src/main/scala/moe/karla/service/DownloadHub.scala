@@ -3,6 +3,7 @@ package moe.karla.service
 
 
 import moe.karla.config.AppConfig
+import moe.karla.misc.ProgramState
 import moe.karla.repo.*
 import moe.karla.handler.*
 import moe.karla.handler.default.*
@@ -15,7 +16,6 @@ import io.getquill.SnakeCase
 import io.getquill.jdbczio.Quill
 
 import scala.concurrent.duration.DurationInt
-import moe.karla.misc.ProgramState
 
 
 
@@ -89,7 +89,7 @@ class DownloadHub(
       tup <- handler.parseAndRetrivePages(meta)
         .tapError: e =>
           ZIO.logError(e.getMessage()) *>
-          metaRepo.update(meta.copy(isParsed = false, state = Failed.code, cause = Some(e.getMessage())))
+            metaRepo.update(meta.copy(isParsed = false, state = Failed.code, cause = Some(e.getMessage())))
         .onInterrupt:
           metaRepo.update(meta.copy(isParsed = false, state = Pending.code)).orDie
 
@@ -148,8 +148,6 @@ class DownloadHub(
 
     for
       signal <- FiberRef.make(true)
-
-      _ <- metaRepo.update(meta.copy(state = MangaMeta.State.Running.code))
 
       _ <- 
         ZStream.fromIterable(meta.completedPages until meta.totalPages).mapZIOParUnordered(config.parallelPages)(_ =>
