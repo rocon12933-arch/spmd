@@ -40,7 +40,7 @@ object TaskEndpoint:
           case Running.code => s"${m.completedPages} / ${m.totalPages}"
           case Completed.code => "Completed"
           case Failed.code => "Failed"
-          case Interrupted.code => "Interrupted"
+          //case Interrupted.code => "Interrupted"
           
           case _ => throw IllegalArgumentException("Undefined code") 
       )
@@ -48,16 +48,16 @@ object TaskEndpoint:
 
 
   def routes = Routes(
-    Method.GET / "task" -> Handler.fromZIO(
+    Method.GET / "tasks" -> Handler.fromFunctionZIO { (req: Request) =>
       for 
         config <- ZIO.service[AppConfig]
         tasks <- MangaMetaRepo.all
       yield 
-        if (config.prettyMetaResponse) Response.json(tasks.map(_.toPretty).toJsonPretty)
+        if (req.queryParam("pretty").isDefined) Response.json(tasks.map(_.toPretty).toJsonPretty)
         else Response.json(tasks.toJsonPretty)
-    ),
+    },
 
-    Method.POST / "task" -> Handler.fromFunctionZIO { (req: Request) =>
+    Method.POST / "tasks" -> Handler.fromFunctionZIO { (req: Request) =>
       for
         content <- req.body.asString
         lines <-
@@ -90,7 +90,7 @@ object TaskEndpoint:
           case None => ZIO.succeed(Response.notFound)
           case Some(meta) => ZIO.serviceWithZIO[Quill.H2[SnakeCase]](_.transaction(
             MangaMetaRepo.updateState(meta.id, MangaMeta.State.Pending) *>
-              MangaPageRepo.updateStateIn(meta.id, MangaPage.State.Failed)(MangaPage.State.Pending)
+              MangaPageRepo.updateStateIn(meta.id, MangaPage.State.Failed, MangaPage.State.Running)(MangaPage.State.Pending)
           )) *> ZIO.succeed(Response.ok)
       yield resp
     }

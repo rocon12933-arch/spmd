@@ -88,7 +88,7 @@ class NHentaiHandler(
         client.request(req)
           .flatMap { resp =>
             if (resp.status.code == 403)
-              ZIO.fail(BypassError(s"A cloudflare blocking presents while parsing: '${meta.galleryUri}'"))
+              ZIO.fail(BypassError(s"Cloudflare blocking presents while parsing: '${meta.galleryUri}'"))
             else resp.body.asString
           }
           .retry(retryPolicy && Schedule.recurWhile[Throwable] {
@@ -143,7 +143,7 @@ class NHentaiHandler(
         client.request(req)
           .flatMap { resp =>
             if (resp.status.code == 403) 
-              ZIO.fail(BypassError(s"A cloudflare blocking presents while parsing: '${page.pageUri}'"))
+              ZIO.fail(BypassError(s"Cloudflare blocking presents while parsing: '${page.pageUri}'"))
             else resp.body.asString
           }
           .retry(retryPolicy && Schedule.recurWhile[Throwable] {

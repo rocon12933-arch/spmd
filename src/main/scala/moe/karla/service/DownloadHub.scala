@@ -6,8 +6,6 @@ import moe.karla.config.AppConfig
 import moe.karla.repo.*
 import moe.karla.handler.*
 import moe.karla.handler.default.*
-import moe.karla.DownloadValve
-import moe.karla.DownloadValve.Blocking
 
 
 import zio.*
@@ -17,11 +15,13 @@ import io.getquill.SnakeCase
 import io.getquill.jdbczio.Quill
 
 import scala.concurrent.duration.DurationInt
+import moe.karla.misc.ProgramState
 
 
 
 class DownloadHub(
   config: AppConfig,
+  programState: ProgramState,
   metaRepo: MangaMetaRepo,
   pageRepo: MangaPageRepo,
   quill: Quill.H2[SnakeCase],
@@ -58,9 +58,8 @@ class DownloadHub(
       
     import MangaMeta.State.*
 
-    ZIO.whenCaseZIO(ZIO.getState[DownloadValve]) {
-      case DownloadValve.Blocking => ZIO.unit
-      case DownloadValve.Enabled => acquireMeta(Pending)(Running).mapOption(
+    ZIO.whenCaseZIO(programState.downValve.get) {
+      case 0 => acquireMeta(Pending)(Running).mapOption(
         _ match
           case meta if (config.nhentai.patterns.exists(meta.galleryUri.matches(_))) => {
             if (meta.isParsed) predefResuming(meta)(nhentaiHandler)
@@ -71,9 +70,10 @@ class DownloadHub(
             else predefStarter(meta)(hentaiMangaHandler)
           }
           case m => 
-            metaRepo.updateFastly(m.copy(state = Failed.code, cause = Some("No compatible handler"))) *> 
+            metaRepo.update(m.copy(state = Failed.code, cause = Some("No compatible handler"))) *> 
             ZIO.logError(s"No compatible handler for '${m.galleryUri}'")
       )
+      case _ => ZIO.unit
     }
     .catchAll(e => ZIO.logError(s"Error: ${e.getMessage()}"))
   )
@@ -87,10 +87,11 @@ class DownloadHub(
 
     for
       tup <- handler.parseAndRetrivePages(meta)
-        .tapError: e => 
-          ZIO.setState(Blocking) *>
+        .tapError: e =>
           ZIO.logError(e.getMessage()) *>
-          metaRepo.updateFastly(meta.copy(isParsed = false, state = Failed.code, cause = Some(e.getMessage())))
+          metaRepo.update(meta.copy(isParsed = false, state = Failed.code, cause = Some(e.getMessage())))
+        .onInterrupt:
+          metaRepo.update(meta.copy(isParsed = false, state = Pending.code)).orDie
 
       (m, lp) = tup
 
@@ -107,19 +108,16 @@ class DownloadHub(
 
           import MangaPage.State.*
 
-          ZIO.whenCaseZIO(ZIO.getState[DownloadValve]) {
-
-            case DownloadValve.Blocking => ZIO.unit
-            
-            case DownloadValve.Enabled =>
+          ZIO.whenCaseZIO(programState.downValve.get) {
+            case 0 =>
               ZIO.ifZIO(signal.get)(
                 onTrue = 
                   acquirePage(m.id, Pending)(Running).mapOption(page =>
                     for 
-                      _ <- handler.download(page).tapError(_ => 
+                      _ <- handler.download(page).onInterrupt(_ => pageRepo.updateState(page.id, Pending).orDie).tapError(e => 
                         transaction(
                           pageRepo.updateState(page.id, Failed) *> 
-                            metaRepo.updateState(meta.id, MangaMeta.State.Failed)
+                            metaRepo.update(m.copy(isParsed = true, state = MangaMeta.State.Failed.code, cause = Some(e.getMessage())))
                         ) *> signal.set(false)
                       )
                       _ <- transaction(
@@ -137,6 +135,7 @@ class DownloadHub(
                   ),
                 onFalse = ZIO.unit
               )
+            case _ => ZIO.unit
           }
         )
         .runDrain
@@ -157,19 +156,17 @@ class DownloadHub(
 
           import MangaPage.State.*
 
-          ZIO.whenCaseZIO(ZIO.getState[DownloadValve]) {
+          ZIO.whenCaseZIO(programState.downValve.get) {
 
-            case DownloadValve.Blocking => ZIO.unit
-            
-            case DownloadValve.Enabled =>
+            case 0 =>
               ZIO.ifZIO(signal.get)(
                 onTrue = 
                   acquirePage(meta.id, Pending)(Running).mapOption(page =>
                     for 
-                      _ <- handler.download(page).tapError(_ => 
+                      _ <- handler.download(page).onInterrupt(_ => pageRepo.updateState(page.id, Pending).orDie).tapError(e => 
                         transaction(
                           pageRepo.updateState(page.id, Failed) *> 
-                            metaRepo.updateState(meta.id, MangaMeta.State.Failed)
+                            metaRepo.update(meta.copy(state = MangaMeta.State.Failed.code, cause = Some(e.getMessage())))
                         ) *> signal.set(false)
                       )
                       _ <- transaction(
@@ -187,6 +184,8 @@ class DownloadHub(
                   ),
                 onFalse = ZIO.unit
               )
+            
+            case _ => ZIO.unit
           }
         )
         .runDrain
@@ -206,12 +205,13 @@ object DownloadHubLive:
 
   val layer = 
     ZLayer {
-      for 
+      for
         config <- ZIO.service[AppConfig]
+        state <- ZIO.service[ProgramState]
         quill <- ZIO.service[Quill.H2[SnakeCase]]
         metaRepo <- ZIO.service[MangaMetaRepo]
         pageRepo <- ZIO.service[MangaPageRepo]
         nhentai <- ZIO.service[NHentaiHandler]
         hentaiManga <- ZIO.service[HentaiMangaHandler]
-      yield DownloadHub(config, metaRepo, pageRepo, quill, nhentai, hentaiManga)
+      yield DownloadHub(config, state, metaRepo, pageRepo, quill, nhentai, hentaiManga)
     }

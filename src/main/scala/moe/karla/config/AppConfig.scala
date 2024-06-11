@@ -26,8 +26,6 @@ final case class AppConfig(
 
   dequeueIfCompleted: Boolean,
 
-  prettyMetaResponse: Boolean,
-
   nhentai: NHentaiConfig,
 
   hentaiManga: HentaiMangaConfig

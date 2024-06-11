@@ -3,6 +3,7 @@ package moe.karla
 
 import moe.karla.misc.FlywayMigration
 import moe.karla.misc.Storage.dataSourceLayer
+import moe.karla.misc.ProgramState
 import moe.karla.config.{AppConfig, ServerConfigLive, ClientConfigLive}
 import moe.karla.repo.MangaMetaRepoLive
 import moe.karla.repo.MangaPageRepoLive
@@ -16,6 +17,8 @@ import moe.karla.endpoint.TaskEndpoint
 
 import zio.*
 import zio.http.*
+import zio.http.Header.AccessControlAllowOrigin
+import zio.http.Middleware.{cors, CorsConfig}
 import zio.http.netty.NettyConfig
 import zio.http.netty.NettyConfig.*
 
@@ -38,19 +41,25 @@ object AppMain extends ZIOAppDefault:
 
   def run =
     FlywayMigration.runMigrate *>
-    ZIO.stateful(DownloadValve.Enabled)(
+    ( 
       for
         config <- ZIO.service[AppConfig]
         _ <- ZIO.attemptBlockingIO(Files.createDirectories(Paths.get(config.downPath)))
         _ <- PrepareService.run
         _ <- DownloadHub.runDaemon
-        port <- Server.install((TaskEndpoint.routes ++ BasicEndpoint.routes).toHttpApp)
+        port <- 
+          Server.install(((TaskEndpoint.routes ++ BasicEndpoint.routes) @@ cors(
+            CorsConfig(
+              allowedOrigin = { _ => Some(AccessControlAllowOrigin.All) },
+            ) 
+          )).toHttpApp)
         _ <- ZIO.log(s"Server started @ ${config.host}:${port}")
         _ <- ZIO.never
       yield ExitCode.success
     )
     .provide(
       dataSourceLayer, AppConfig.layer,
+      ProgramState.live,
       NHentaiHandlerLive.layer,
       HentaiMangaHandlerLive.layer,
       PrepareServiceLive.layer,

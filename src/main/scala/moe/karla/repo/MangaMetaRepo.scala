@@ -33,7 +33,7 @@ object MangaMeta:
     case Running extends State(1)
     case Completed extends State(2)
     case Failed extends State(-1)
-    case Interrupted extends State(-2)
+    //case Interrupted extends State(-2)
 
     def fromCode(code: Short) = 
       code match 
@@ -41,7 +41,7 @@ object MangaMeta:
         case Running.code => Running
         case Completed.code => Completed
         case Failed.code => Failed
-        case Interrupted.code => Interrupted
+        //case Interrupted.code => Interrupted
         case _ => throw IllegalArgumentException("No such code in defined states") 
 
 
@@ -173,9 +173,11 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
     run(quote { metaQuery.filter(_.id == lift(meta.id)).update(
       _.galleryUri -> lift(meta.galleryUri), 
       _.totalPages -> lift(meta.totalPages),
+      _.isParsed -> lift(meta.isParsed),
       _.title -> lift(meta.title), 
       _.completedPages -> lift(meta.completedPages), 
       _.state -> lift(meta.state),
+      _.cause -> lift(meta.cause),
     ) }).map(_ > 0)
 
 
@@ -209,10 +211,10 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
     run(queryGetFirstByIsParsedAndStateIn(isParsed, state)).map(_.headOption)
 
   
-  def updateState(states: State*)(newState: State) = run(queryUpdateState(states)(newState))
+  def updateStateIn(states: State*)(newState: State) = run(queryUpdateState(states)(newState))
 
 
-  def updateState(isParsed: Boolean, states: State*)(newState: State) = run(queryUpdateState(isParsed, states)(newState))
+  def updateStateIn(isParsed: Boolean, states: State*)(newState: State) = run(queryUpdateState(isParsed, states)(newState))
 
 
   def batchCreate(li: List[MangaMeta]) = run(batchInsert(li))
@@ -224,6 +226,9 @@ object MangaMetaRepo:
 
 
   def getOption(id: Int) = ZIO.serviceWithZIO[MangaMetaRepo](_.getOption(id))
+
+
+  def update(meta: MangaMeta) = ZIO.serviceWithZIO[MangaMetaRepo](_.update(meta))
 
 
   def updateFastly(meta: MangaMeta) = ZIO.serviceWithZIO[MangaMetaRepo](_.updateFastly(meta))

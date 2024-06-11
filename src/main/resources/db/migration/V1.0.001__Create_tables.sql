@@ -1,5 +1,5 @@
 /* H2 Style*/
---state: 0:pending 1:running 2:completed -1:failed -2:interrupted
+--state: 0:pending 1:running 2:completed -1:failed
 create table manga_meta(
   id int generated always as identity,
   gallery_uri varchar(500) not null,
