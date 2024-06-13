@@ -4,9 +4,9 @@ create table manga_meta(
   id int generated always as identity,
   gallery_uri varchar(500) not null,
   is_parsed boolean not null default false,
-  title varchar(500) not null,
-  total_pages int not null,
-  completed_pages int not null,
+  title varchar(500),
+  total_pages int not null default 0,
+  completed_pages int not null default 0,
   state smallint not null,
   cause varchar(500),
   created_at timestamp not null default CURRENT_TIMESTAMP

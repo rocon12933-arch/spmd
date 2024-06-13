@@ -97,7 +97,8 @@ class DownloadHub(
 
       _ <- 
         quill.transaction(
-          metaRepo.update(m.copy(isParsed = true, state = Running.code)) *> pageRepo.batchCreate(lp)
+          metaRepo.update(m.copy(isParsed = true, state = Running.code)) *> 
+            pageRepo.batchCreate(lp.map(_.copy(state = Pending.code)))
         )
         .flatMap(_ => ZIO.log(s"Meta is saved: '${m.title}'"))
 
@@ -117,7 +118,9 @@ class DownloadHub(
                       _ <- handler.download(page).onInterrupt(_ => pageRepo.updateState(page.id, Pending).orDie).tapError(e => 
                         transaction(
                           pageRepo.updateState(page.id, Failed) *> 
-                            metaRepo.update(m.copy(isParsed = true, state = MangaMeta.State.Failed.code, cause = Some(e.getMessage())))
+                            metaRepo.getOption(page.metaId).mapOption(modifiedMeta =>
+                              metaRepo.update(modifiedMeta.copy(state = MangaMeta.State.Failed.code, cause = Some(e.getMessage())))
+                            )
                         ) *> signal.set(false)
                       )
                       _ <- transaction(
@@ -163,8 +166,10 @@ class DownloadHub(
                     for 
                       _ <- handler.download(page).onInterrupt(_ => pageRepo.updateState(page.id, Pending).orDie).tapError(e => 
                         transaction(
-                          pageRepo.updateState(page.id, Failed) *> 
-                            metaRepo.update(meta.copy(state = MangaMeta.State.Failed.code, cause = Some(e.getMessage())))
+                          pageRepo.updateState(page.id, Failed) *>
+                            metaRepo.getOption(page.metaId).mapOption(modifiedMeta =>
+                              metaRepo.update(modifiedMeta.copy(state = MangaMeta.State.Failed.code, cause = Some(e.getMessage())))
+                            )
                         ) *> signal.set(false)
                       )
                       _ <- transaction(

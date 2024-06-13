@@ -29,9 +29,9 @@ class HentaiMangaHandler(
 
 
   private val retryPolicy = 
-    Schedule.recurs(5) || 
-    Schedule.spaced(1 second) || 
-    Schedule.fibonacci(200 millis)
+    Schedule.recurs(4) && 
+    Schedule.spaced(1 second) && 
+    Schedule.fibonacci(600 millis)
 
   
   private def configureRequest(url: URL) =
@@ -84,7 +84,7 @@ class HentaiMangaHandler(
           .mapError(e => NetworkError(e))
           .map(Jsoup.parse(_).body)
 
-      title <- ZIO.fromOption(
+      titleString <- ZIO.fromOption(
         Option(body.selectFirst("div#bodywrap > h2"))
           .map(_.wholeText.filtered)
           .collect { case s: String if s.size > 0 => s }
@@ -99,7 +99,7 @@ class HentaiMangaHandler(
 
       pages = 1
 
-      parsedMeta = meta.copy(state = MangaMeta.State.Pending.code, title = title, totalPages = pages)
+      parsedMeta = meta.copy(state = MangaMeta.State.Pending.code, title = Some(titleString), totalPages = pages)
 
       parsedPages =
         List(
@@ -108,7 +108,7 @@ class HentaiMangaHandler(
             parsedMeta.id,
             downloadPage,
             1,
-            s"${parsedMeta.title.filtered}",
+            s"${titleString.filtered}",
             MangaPage.State.Pending.code,
           )
         )

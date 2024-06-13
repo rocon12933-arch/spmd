@@ -16,7 +16,7 @@ case class MangaMeta(
   id: Int,
   galleryUri: String,
   isParsed: Boolean,
-  title: String,
+  title: Option[String],
   totalPages: Int,
   completedPages: Int,
   state: Short,
@@ -24,7 +24,6 @@ case class MangaMeta(
 )
 
 object MangaMeta:
-
 
   given encoder: JsonEncoder[MangaMeta] = DeriveJsonEncoder.gen[MangaMeta]
 
@@ -44,24 +43,6 @@ object MangaMeta:
         //case Interrupted.code => Interrupted
         case _ => throw IllegalArgumentException("No such code in defined states") 
 
-
-/*
-trait MangaMetaRepo:
-
-  def all: IO[SQLException, List[MangaMeta]] 
-
-
-  def updateState(id: Int, State: Short): IO[SQLException, Boolean]
-
-
-  def create(galleryUri: String, title: String, totalPages: Int, State: Short): IO[SQLException, Int]
-
-
-  def delete(id: Int): IO[SQLException, Boolean]
-
-
-  def accquire(State: Short, transfrom: Short): IO[SQLException, Option[MangaMeta]]
-*/
 
 
 class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
@@ -125,7 +106,7 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
   private inline def queryInsert(
     galleryUri: String, 
     isParsed: Boolean, 
-    title: String, 
+    title: Option[String], 
     totalPages: Int, 
     state: Short
   ) =
@@ -190,7 +171,7 @@ class MangaMetaRepo(quill: Quill.H2[SnakeCase]):
   def delete(id: Int) = run(queryDelete(id)).map(_ > 0)
 
   
-  def create(galleryUri: String, isParsed: Boolean, title: String, totalPages: Int, state: State) = 
+  def create(galleryUri: String, isParsed: Boolean, title: Option[String], totalPages: Int, state: State) = 
     transaction(
       run(queryInsert(galleryUri, isParsed, title, totalPages, state.code)) *>
       run(metaQuery.filter(_.galleryUri == lift(galleryUri)).map(_.id).take(1))
@@ -240,7 +221,7 @@ object MangaMetaRepo:
   def create(
     galleryUri: String, 
     isParsed: Boolean, 
-    title: String, 
+    title: Option[String], 
     totalPages: Int, 
     state: MangaMeta.State
   ) =

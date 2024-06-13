@@ -28,7 +28,7 @@ class NHentaiHandler(
 
   private val retryPolicy = 
     Schedule.recurs(4) && 
-    Schedule.spaced(1 second) &&
+    Schedule.spaced(1 second) && 
     Schedule.fibonacci(600 millis)
 
   /* 
@@ -103,7 +103,7 @@ class NHentaiHandler(
           .map(Jsoup.parse(_).body)
           
 
-      title <- ZIO.fromOption(
+      titleString <- ZIO.fromOption(
         Option(body.selectFirst("h2.title")).orElse(Option(body.selectFirst("h1.title"))).map(_.wholeText)
       ).mapError(_ => ParsingError(s"Extracting title failed while parsing '${meta.galleryUri}'"))
 
@@ -111,7 +111,7 @@ class NHentaiHandler(
         body.select("span.tags > a.tag > span.name").last.text.toInt
       ).mapError(_ => ParsingError(s"Extracting pages failed while parsing '${meta.galleryUri}'"))
 
-      parsedMeta = meta.copy(state = 2, title = title, totalPages = pages)
+      parsedMeta = meta.copy(title = Some(titleString), totalPages = pages)
 
       parsedPages = (1 to parsedMeta.totalPages).map(p =>
 
@@ -122,7 +122,7 @@ class NHentaiHandler(
           parsedMeta.id,
           s"${u}/${p}/",
           p,
-          s"${parsedMeta.title.filtered}",
+          s"${titleString.filtered}",
           MangaPage.State.Pending.code,
         )
       )

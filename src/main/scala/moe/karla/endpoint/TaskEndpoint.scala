@@ -23,7 +23,7 @@ object TaskEndpoint:
   case class PrettyMangaMeta(
     id: Int,
     galleryUri: String,
-    title: String,
+    title: Option[String],
     progress: String,
   )
 
@@ -66,7 +66,7 @@ object TaskEndpoint:
           )
         _ <-
           if (lines.size > 0) 
-            MangaMetaRepo.batchCreate(lines.map(MangaMeta(0, _, false, "", 0, 0, MangaMeta.State.Pending.code, None)))
+            MangaMetaRepo.batchCreate(lines.map(MangaMeta(0, _, false, None, 0, 0, MangaMeta.State.Pending.code, None)))
           else ZIO.unit
 
       yield if (lines.size > 0) Response.json(lines.toJsonPretty) else Response.badRequest

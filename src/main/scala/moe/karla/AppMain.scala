@@ -18,7 +18,7 @@ import moe.karla.endpoint.TaskEndpoint
 import zio.*
 import zio.http.*
 import zio.http.Header.AccessControlAllowOrigin
-import zio.http.Middleware.{cors, CorsConfig}
+import zio.http.Middleware.CorsConfig
 import zio.http.netty.NettyConfig
 import zio.http.netty.NettyConfig.*
 
@@ -48,11 +48,13 @@ object AppMain extends ZIOAppDefault:
         _ <- PrepareService.run
         _ <- DownloadHub.runDaemon
         port <- 
-          Server.install(((TaskEndpoint.routes ++ BasicEndpoint.routes) @@ cors(
-            CorsConfig(
-              allowedOrigin = { _ => Some(AccessControlAllowOrigin.All) },
-            ) 
-          )).toHttpApp)
+          Server.install(((TaskEndpoint.routes ++ BasicEndpoint.routes) @@ 
+            Middleware.cors(
+              CorsConfig(
+                allowedOrigin = { _ => Some(AccessControlAllowOrigin.All) },
+              )
+            )// @@ Middleware.serveResources(Path.empty / "static")
+          ).toHttpApp)
         _ <- ZIO.log(s"Server started @ ${config.host}:${port}")
         _ <- ZIO.never
       yield ExitCode.success
