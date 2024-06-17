@@ -100,7 +100,7 @@ class DownloadHub(
           metaRepo.update(m.copy(isParsed = true, state = Running.code)) *> 
             pageRepo.batchCreate(lp.map(_.copy(state = Pending.code)))
         )
-        .flatMap(_ => ZIO.log(s"Meta is saved: '${m.title}'"))
+        .flatMap(_ => ZIO.log(s"Meta is saved: '${m.title.get}'"))
 
       signal <- FiberRef.make(true)
 
@@ -127,10 +127,10 @@ class DownloadHub(
                         pageRepo.delete(page.id) *> metaRepo.getOption(page.metaId).mapOption(m =>
                           metaRepo.increaseCompletedPages(m.id) *> ZIO.when(m.completedPages + 1 >= m.totalPages)(
                             (
-                              if (config.dequeueIfCompleted) metaRepo.delete(m.id)
+                              if (config.dequeueWhenCompleted) metaRepo.delete(m.id)
                               else metaRepo.updateState(m.id, MangaMeta.State.Completed)
                             ) *>
-                              ZIO.log(s"Completed: '${m.title}'") *> signal.set(false)
+                              ZIO.log(s"Completed: '${m.title.get}'") *> signal.set(false)
                           )
                         )
                       ) <* ZIO.sleep(2 seconds)
@@ -176,10 +176,10 @@ class DownloadHub(
                         pageRepo.delete(page.id) *> metaRepo.getOption(page.metaId).mapOption(m =>
                           metaRepo.increaseCompletedPages(m.id) *> ZIO.when(m.completedPages + 1 >= m.totalPages)(
                             (
-                              if (config.dequeueIfCompleted) metaRepo.delete(m.id)
+                              if (config.dequeueWhenCompleted) metaRepo.delete(m.id)
                               else metaRepo.updateState(m.id, MangaMeta.State.Completed)
                             ) *> 
-                              ZIO.log(s"Completed: '${m.title}'") *> signal.set(false)
+                              ZIO.log(s"Completed: '${m.title.get}'") *> signal.set(false)
                           )
                         )
                       ) <* ZIO.sleep(2 seconds)

@@ -12,7 +12,7 @@ data.trace.db
 download/
 .bloop/
 .bsp/
-.metals/
+.metals*/
 .vscode/
 target/
 

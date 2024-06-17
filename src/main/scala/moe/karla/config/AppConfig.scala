@@ -22,7 +22,7 @@ final case class AppConfig(
 
   parallelGalleries: Int,
 
-  dequeueIfCompleted: Boolean,
+  dequeueWhenCompleted: Boolean,
 
   nhentai: NHentaiConfig,
 

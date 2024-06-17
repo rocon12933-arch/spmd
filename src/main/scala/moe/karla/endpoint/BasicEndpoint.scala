@@ -14,7 +14,7 @@ object BasicEndpoint:
 
     Method.GET / "valve" / "download" -> handler {
       ZIO.ifZIO(ZIO.serviceWithZIO[ProgramState](_.downValve.get.map(_ == 0)))(
-        onTrue = ZIO.succeed(Response.text("Not blocking")),
+        onTrue = ZIO.succeed(Response.text("Enabled")),
         onFalse = ZIO.succeed(Response.text("Blocking"))
       )
     },

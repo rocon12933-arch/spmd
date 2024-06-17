@@ -23,10 +23,10 @@ package object handler:
   case class UnexpectedHandlerError(e: Throwable) extends Exception(e), HandlerError
 
 
-  case class BypassError(messages: String) extends Exception(messages), HandlerError
-
-
   case class ParsingError(messages: String) extends Exception(messages), HandlerError
+
+
+  case class BypassError(messages: String) extends Exception(messages), HandlerError
 
 
   case class NetworkError(e: Throwable) extends Exception(e), HandlerError

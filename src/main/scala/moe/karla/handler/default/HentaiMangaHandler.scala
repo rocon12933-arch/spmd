@@ -27,12 +27,6 @@ class HentaiMangaHandler(
   config: AppConfig
 ) extends moe.karla.handler.Handler:
 
-
-  private val retryPolicy = 
-    Schedule.recurs(4) && 
-    Schedule.spaced(1 second) && 
-    Schedule.fibonacci(600 millis)
-
   
   private def configureRequest(url: URL) =
     Request.get(url).addHeader("User-Agent", config.agent)
@@ -57,7 +51,7 @@ class HentaiMangaHandler(
     
   
   extension [A <: String] (str: A)
-    def filtered = 
+    private def filtered = 
       str.strip()
         .replace('?', '？')
         .replace('（', '(')
@@ -67,6 +61,33 @@ class HentaiMangaHandler(
         .replace("\\", "＼")
         .replace("*", "＊")
         .replaceAll("[\\\\/:*?\"<>|]", " ")
+
+
+  private val retryPolicy = 
+    Schedule.recurs(4) && 
+    Schedule.spaced(1 second) && 
+    Schedule.fibonacci(600 millis)
+  
+
+  private def defaultMoveFile(src: String, to: String) =
+    ZIO.attemptBlockingIO(
+      Files.move(
+        Paths.get(src), 
+        Paths.get(to), 
+        StandardCopyOption.REPLACE_EXISTING
+      )
+    )
+    .retry(Schedule.recurs(3) && Schedule.spaced(2 seconds))
+    .mapError(FileSystemError(_))
+
+  
+  private def defaultRemoveFile(path: String) =
+    ZIO.attemptBlockingIO(
+      Files.deleteIfExists(Paths.get(path))
+    )
+    .retry(Schedule.recurs(3) && Schedule.spaced(2 seconds))
+    .mapError(FileSystemError(_))
+
 
 
   def parseAndRetrivePages(meta: MangaMeta): ZIO[zio.http.Client & Scope, Exception, (MangaMeta, List[MangaPage])] =
@@ -81,7 +102,7 @@ class HentaiMangaHandler(
         client.request(configureRequest(url))
           .flatMap(_.body.asString)
           .retry(retryPolicy)
-          .mapError(e => NetworkError(e))
+          .mapError(NetworkError(_))
           .map(Jsoup.parse(_).body)
 
       titleString <- ZIO.fromOption(
@@ -92,14 +113,12 @@ class HentaiMangaHandler(
 
 
       downloadPage <- ZIO.fromOption(
-        Option(body.selectFirst("div#ads > a.btn")).map(_.attr("href")).map(path => 
+        Option(body.selectFirst("div#download_btns > a.btn")).map(_.attr("href")).map(path => 
           s"${url.scheme.get.encode}://${url.host.get}${path}"
         )
       ).mapError(_ => ParsingError(s"Extracting download page failed while parsing '${meta.galleryUri}'"))
 
-      pages = 1
-
-      parsedMeta = meta.copy(state = MangaMeta.State.Pending.code, title = Some(titleString), totalPages = pages)
+      parsedMeta = meta.copy(title = Some(titleString), totalPages = 1)
 
       parsedPages =
         List(
@@ -131,15 +150,16 @@ class HentaiMangaHandler(
         .mapError(NetworkError(_))
         .map(Jsoup.parse(_).body)
 
-      archiveUri <- ZIO.attempt(
-        body.select("div#adsbox > a.down_btn").first.attr("href")
-      )
-      .map(uri => s"https:${uri}")
-      .map(uri => uri.substring(0, uri.indexOf("?n=")))
-      .mapError(_ => ParsingError(s"Extracting archive uri from page failed while parsing '${page.pageUri}'"))
+      archiveUri <- 
+        ZIO.attempt(
+          body.select("div#adsbox > a.down_btn").first.attr("href")
+        )
+        .map(uri => s"https:${uri}")
+        .map(uri => uri.substring(0, uri.indexOf("?n=")))
+        .mapError(_ => ParsingError(s"Extracting archive uri from page failed while parsing '${page.pageUri}'"))
 
 
-      ref <- FiberRef.make(Either.cond[List[Byte], String](true, "unknown", List[Byte]()))
+      ref <- Ref.make(Either.cond[List[Byte], String](true, "unknown", List[Byte]()))
 
       fireSink = ZSink.collectAllN[Byte](10).map(_.toList).mapZIO(bytes => ref.set(fileExtJudge(bytes)))
 
@@ -147,13 +167,28 @@ class HentaiMangaHandler(
 
       _ <- ZIO.log(s"Downloading: '${archiveUri}'")
 
-      _ <- client.request(Request.get(archiveUri))
-        .map(_.body.asStream)
-        .flatMap(_.timeout(6 hours).tapSink(fireSink).run(ZSink.fromFileName(downloadPath)))
-        .tapError(e => ZIO.logError(s"Exception is raised when downloading: '${archiveUri}'. retry."))
-        .retry(retryPolicy)
-        .mapError(NetworkError(_))
-        .tapError(e => ZIO.logError(s"Exception is raised when downloading: '${archiveUri}'. abort."))
+      _ <- 
+        client.request(Request.get(archiveUri))
+          .flatMap { resp =>
+            if (resp.status.code == 404)
+              ZIO.fail(ParsingError(s"404 not found presents while trying to download: '${archiveUri}'"))
+            else if (resp.status.code > 500)
+              ZIO.fail(ParsingError(s"50x presents while trying to download: '${archiveUri}'"))
+            else ZIO.succeed(resp.body.asStream)
+          }
+          .flatMap(_.timeout(6 hours).tapSink(fireSink).run(ZSink.fromFileName(downloadPath)))
+          .tapError(e => ZIO.logError(s"Exception is raised while downloading: '${archiveUri}'."))
+          .retry(retryPolicy && Schedule.recurWhile[Throwable] {
+            case _: ParsingError => false
+            case _ => true
+          })
+          .mapError:
+            _ match
+              case b: ParsingError => b
+              case error => NetworkError(error)
+          .tapError: _ =>
+            ZIO.logError(s"Maximum number of retries has been reached while downloading: '${archiveUri}'. abort.") *>
+              defaultRemoveFile(downloadPath)
 
 
       preExt <- ref.get
@@ -166,17 +201,11 @@ class HentaiMangaHandler(
 
       preferringPath = s"${config.downPath}/${page.title}.${ext}"
 
-      _ <- ZIO.attemptBlockingIO(
-        Files.move(
-          Paths.get(downloadPath), 
-          Paths.get(preferringPath), 
-          StandardCopyOption.REPLACE_EXISTING
-        )
-      )
-      .retry(Schedule.recurs(3) || Schedule.spaced(2 seconds))
-      .mapError(FileSystemError(_))
+      _ <- defaultMoveFile(downloadPath, preferringPath)
 
       _ <- ZIO.log(s"Saved: '${archiveUri}' as '${preferringPath}'")
+
+      _ <- ZIO.sleep(10 seconds)
       
     yield page
 

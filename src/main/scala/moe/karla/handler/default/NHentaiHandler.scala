@@ -26,36 +26,11 @@ class NHentaiHandler(
 ) extends moe.karla.handler.Handler:
 
 
-  private val retryPolicy = 
-    Schedule.recurs(4) && 
-    Schedule.spaced(1 second) && 
-    Schedule.fibonacci(600 millis)
-
-  /* 
-  private def fileExtJudge(bytes: List[Byte]) =
-    bytes match
-      case -119 :: 80 :: 78 :: 71 :: 13 :: 10 :: 26 :: 10 :: Nil => "png"
-      case -1 :: -40 :: -1 :: _ => "jpg"
-      case _ => "unknown"
-   */
-
-  private def fileExtJudge(bytes: List[Byte]): Either[List[Byte], String] =
-    bytes match
-      case -1 :: -40 :: -1 :: _ => Right("jpg")
-      // 0x89 = 1000 1001 -> 1111 0110 -> 1111 0110 + 1b = 1111 0111 = -119
-      //case -119 :: 80 :: 78 :: 71 :: 13 :: 10 :: 26 :: 10 :: Nil => "png"
-      case -119 :: 80 :: 78 :: _ => Right("png")
-      // 0x47 = 0100 0111 -> self = 71
-      case 71 :: 79 :: 70 :: _ => Right("gif")
-      
-      case _ => Left(bytes)
-
-
   private def configureRequest(uri: String): IO[UnsupportedOperationException, Request] =
     if (config.nhentai.cloudflare.strategy == "provided-cookies")
       ZIO.succeed:
         Request.get(uri)
-          .addHeader("Cookie", config.nhentai.cloudflare.cookies)
+          .addHeader("Cookie", config.nhentai.cloudflare.providedCookies)
           .addHeader("User-Agent", config.agent)
     else
       ZIO.fail:
@@ -63,7 +38,7 @@ class NHentaiHandler(
       
 
   extension [A <: String] (str: A)
-    def filtered = 
+    private def filtered = 
       str.strip()
         .replace('?', '？')
         .replace('（', '(')
@@ -73,6 +48,44 @@ class NHentaiHandler(
         .replace("\\", "＼")
         .replace("*", "＊")
         .replaceAll("[\\\\/:*?\"<>|]", " ")
+
+  
+  private val retryPolicy = 
+    Schedule.recurs(4) && 
+    Schedule.spaced(1 second) && 
+    Schedule.fibonacci(600 millis)
+
+  
+  extension [R, E <: Throwable, A] (z: ZIO[R, E, A])
+    private def defaultRetry = 
+      z.retry(retryPolicy && Schedule.recurWhile[Throwable] {
+        case _: BypassError | ParsingError => false
+        case _ => true 
+      })
+      .mapError:
+        _ match
+          case b: (BypassError | ParsingError) => b
+          case error => NetworkError(error)
+
+
+  private def defaultMoveFile(src: String, to: String) =
+    ZIO.attemptBlockingIO(
+      Files.move(
+        Paths.get(src), 
+        Paths.get(to), 
+        StandardCopyOption.REPLACE_EXISTING
+      )
+    )
+    .retry(Schedule.recurs(3) && Schedule.spaced(2 seconds))
+    .mapError(FileSystemError(_))
+
+  
+  private def defaultRemoveFile(path: String) =
+    ZIO.attemptBlockingIO(
+      Files.deleteIfExists(Paths.get(path))
+    )
+    .retry(Schedule.recurs(3) && Schedule.spaced(2 seconds))
+    .mapError(FileSystemError(_))
 
   
 
@@ -89,17 +102,11 @@ class NHentaiHandler(
           .flatMap { resp =>
             if (resp.status.code == 403)
               ZIO.fail(BypassError(s"Cloudflare blocking presents while parsing: '${meta.galleryUri}'"))
+            else if (resp.status.code == 404)
+              ZIO.fail(ParsingError(s"404 not found presents while parsing: '${meta.galleryUri}'"))
             else resp.body.asString
           }
-          .retry(retryPolicy && Schedule.recurWhile[Throwable] {
-            case _: BypassError => false
-            case _ => true 
-          })
-          .mapError(e =>
-            e match
-              case b: BypassError => b
-              case _ => NetworkError(e) 
-          )
+          .defaultRetry
           .map(Jsoup.parse(_).body)
           
 
@@ -131,7 +138,20 @@ class NHentaiHandler(
     yield (parsedMeta, parsedPages)
 
 
-  def download(page: MangaPage) = 
+  def download(page: MangaPage) = {
+
+    def processFileExtensionName(bytes: List[Byte]): Either[List[Byte], String] =
+      bytes match
+        case -1 :: -40 :: -1 :: _ => Right("jpg")
+        // 0x89 = 1000 1001 -> 1111 0110 -> 1111 0110 + 1b = 1111 0111 = -119
+        //case -119 :: 80 :: 78 :: 71 :: 13 :: 10 :: 26 :: 10 :: Nil => "png"
+        case -119 :: 80 :: 78 :: _ => Right("png")
+        // 0x47 = 0100 0111 -> self = 71
+        case 71 :: 73 :: 70 :: _ => Right("gif")
+        
+        case _ => Left(bytes)
+
+
     for
       client <- ZIO.service[Client]
       
@@ -144,17 +164,11 @@ class NHentaiHandler(
           .flatMap { resp =>
             if (resp.status.code == 403) 
               ZIO.fail(BypassError(s"Cloudflare blocking presents while parsing: '${page.pageUri}'"))
+            else if (resp.status.code == 404)
+              ZIO.fail(ParsingError(s"404 not found presents while parsing: '${page.pageUri}'"))
             else resp.body.asString
           }
-          .retry(retryPolicy && Schedule.recurWhile[Throwable] {
-            case _: BypassError => false
-            case _ => true 
-          })
-          .mapError(e =>
-            e match
-              case b: BypassError => b
-              case _ => NetworkError(e) 
-          )
+          .defaultRetry
           .map(Jsoup.parse(_).body)
 
       imgUri <- ZIO.attempt(
@@ -162,9 +176,15 @@ class NHentaiHandler(
       ).mapError(_ => ParsingError(s"Extracting image uri failed while parsing '${page.pageUri}'"))
 
 
-      ref <- FiberRef.make(Either.cond[List[Byte], String](true, "unknown", List[Byte]()))
+      ref <- Ref.make(Either.cond[List[Byte], String](true, "invalid", List[Byte]()))
 
-      fireSink = ZSink.collectAllN[Byte](10).map(_.toList).mapZIO(bytes => ref.set(fileExtJudge(bytes)))
+      fireSink = ZSink.collectAllN[Byte](7).map(_.toList).mapZIO(bytes =>
+        ref.set:
+          if(config.nhentai.download.fileSignatureCheck.enabled)
+            processFileExtensionName(bytes)
+          else
+            Right(imgUri.substring(imgUri.lastIndexOf('.') + 1))
+      )
 
       _ <- ZIO.attemptBlockingIO(Files.createDirectories(Paths.get(s"${config.downPath}/${page.title}")))
 
@@ -172,36 +192,41 @@ class NHentaiHandler(
 
       _ <- ZIO.log(s"Downloading: '${imgUri}'")
 
-      _ <- client.request(Request.get(imgUri))
-        .map(_.body.asStream)
-        .flatMap(_.timeout(90 seconds).tapSink(fireSink).run(ZSink.fromFileName(path)))
-        .tapError(e => ZIO.logError(s"Exception is raised when downloading: '${imgUri}'. retry."))
-        .retry(retryPolicy)
-        .mapError(NetworkError(_))
-        .tapError(e => ZIO.logError(s"Exception is raised when downloading: '${imgUri}'. abort."))
+      _ <- 
+        client.request(Request.get(imgUri))
+          .flatMap { resp =>
+            if (resp.status.code == 403) 
+              ZIO.fail(BypassError(s"Cloudflare blocking presents while trying to download: '${imgUri}'"))
+            else if (resp.status.code == 404)
+              ZIO.fail(ParsingError(s"404 not found presents while trying to download: '${imgUri}'"))
+            else ZIO.succeed(resp.body.asStream)
+          }
+          .flatMap(_.timeout(120 seconds).tapSink(fireSink).run(ZSink.fromFileName(path)))
+          .tapError(e => ZIO.logError(s"Exception is raised when downloading: '${imgUri}'."))
+          .defaultRetry
+          .tapError: e =>
+            ZIO.logError(s"Maximum number of retries has been reached while downloading: '${imgUri}'. abort.")
+
 
       preExt <- ref.get
 
-      _ <- ZIO.when(preExt.isLeft)(
-        ZIO.logWarning(s"Unknown file signature is detected, page uri: '${page.pageUri}'")
-      )
+      _ <- ZIO.whenCase(preExt):
+        case Left(list) =>
+          ZIO.logWarning(s"Unknown file signature is detected, " +
+            s"signature: '${list.map(String.valueOf(_)).reduce((a, b) => s"${a},${b}")}', " +
+            s"page uri: '${page.pageUri}', " +
+            s"image uri: '${imgUri}', " +
+            s"extension name falls back to '${config.nhentai.download.fileSignatureCheck.fallbackExtensionName}'")
 
-      ext = preExt.getOrElse("unknown")
+      ext = preExt.getOrElse(config.nhentai.download.fileSignatureCheck.fallbackExtensionName)
 
-      _ <- ZIO.attemptBlockingIO(
-        Files.move(
-          Paths.get(path), 
-          Paths.get(s"${path}.${ext}"), 
-          StandardCopyOption.REPLACE_EXISTING
-        )
-      )
-      .retry(Schedule.recurs(3) || Schedule.spaced(2 seconds))
-      .mapError(FileSystemError(_))
+      _ <- defaultMoveFile(path, s"${path}.${ext}")
 
       _ <- ZIO.log(s"Saved: '${imgUri}' as '${path}.${ext}'")
       
     yield page
-
+  }
+  
 
 object NHentaiHandlerLive:
 
