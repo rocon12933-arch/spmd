@@ -105,7 +105,7 @@ class DownloadHub(
       signal <- FiberRef.make(true)
 
       _ <-
-        ZStream.fromIterable(0 until m.totalPages).mapZIOParUnordered(config.parallelPages)(_ =>
+        ZStream.fromIterable(0 until m.totalPages + 1).mapZIOParUnordered(config.parallelPages)(_ =>
 
           import MangaPage.State.*
 
@@ -115,7 +115,7 @@ class DownloadHub(
                 onTrue = 
                   acquirePage(m.id, Pending)(Running).mapOption(page =>
                     for 
-                      _ <- handler.download(page).onInterrupt(_ => pageRepo.updateState(page.id, Pending).orDie).tapError(e => 
+                      sizeOption <- handler.download(page).onInterrupt(_ => pageRepo.updateState(page.id, Pending).orDie).tapError(e => 
                         transaction(
                           pageRepo.updateState(page.id, Failed) *> 
                             metaRepo.getOption(page.metaId).mapOption(modifiedMeta =>
@@ -153,7 +153,7 @@ class DownloadHub(
       signal <- FiberRef.make(true)
 
       _ <- 
-        ZStream.fromIterable(meta.completedPages until meta.totalPages).mapZIOParUnordered(config.parallelPages)(_ =>
+        ZStream.fromIterable(meta.completedPages until meta.totalPages + 1).mapZIOParUnordered(config.parallelPages)(_ =>
 
           import MangaPage.State.*
 
@@ -164,7 +164,7 @@ class DownloadHub(
                 onTrue = 
                   acquirePage(meta.id, Pending)(Running).mapOption(page =>
                     for 
-                      _ <- handler.download(page).onInterrupt(_ => pageRepo.updateState(page.id, Pending).orDie).tapError(e => 
+                      sizeOption <- handler.download(page).onInterrupt(_ => pageRepo.updateState(page.id, Pending).orDie).tapError(e => 
                         transaction(
                           pageRepo.updateState(page.id, Failed) *>
                             metaRepo.getOption(page.metaId).mapOption(modifiedMeta =>

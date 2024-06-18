@@ -14,7 +14,7 @@ package object handler:
     def parseAndRetrivePages(meta: MangaMeta): ZIO[zio.http.Client & Scope, Exception, (MangaMeta, List[MangaPage])]
 
 
-    def download(page: MangaPage): ZIO[zio.http.Client & Scope, Exception, MangaPage]
+    def download(page: MangaPage): ZIO[zio.http.Client & Scope, Exception, Option[Long]]
     
   
   sealed trait HandlerError

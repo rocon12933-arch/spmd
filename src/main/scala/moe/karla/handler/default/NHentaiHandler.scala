@@ -192,7 +192,7 @@ class NHentaiHandler(
 
       _ <- ZIO.log(s"Downloading: '${imgUri}'")
 
-      _ <- 
+      length <- 
         client.request(Request.get(imgUri))
           .flatMap { resp =>
             if (resp.status.code == 403) 
@@ -222,9 +222,9 @@ class NHentaiHandler(
 
       _ <- defaultMoveFile(path, s"${path}.${ext}")
 
-      _ <- ZIO.log(s"Saved: '${imgUri}' as '${path}.${ext}'")
+      _ <- ZIO.log(s"Saved: '${imgUri}' as '${path}.${ext}', downloaded size: ${String.format("%.2f", length.toFloat / 1024)} KB")
       
-    yield page
+    yield Some(length)
   }
   
 

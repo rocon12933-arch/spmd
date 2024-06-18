@@ -135,7 +135,7 @@ class HentaiMangaHandler(
     yield (parsedMeta, parsedPages)
 
 
-  def download(page: MangaPage): ZIO[zio.http.Client & Scope, Exception, MangaPage] =
+  def download(page: MangaPage): ZIO[zio.http.Client & Scope, Exception, Option[Long]] =
     for
       client <- ZIO.service[Client]
       
@@ -167,7 +167,7 @@ class HentaiMangaHandler(
 
       _ <- ZIO.log(s"Downloading: '${archiveUri}'")
 
-      _ <- 
+      length <- 
         client.request(Request.get(archiveUri))
           .flatMap { resp =>
             if (resp.status.code == 404)
@@ -203,11 +203,11 @@ class HentaiMangaHandler(
 
       _ <- defaultMoveFile(downloadPath, preferringPath)
 
-      _ <- ZIO.log(s"Saved: '${archiveUri}' as '${preferringPath}'")
+      _ <- ZIO.log(s"Saved: '${archiveUri}' as '${preferringPath}', downloaded size: ${String.format("%.2f", length.toFloat / 1024 / 1024)} MB")
 
-      _ <- ZIO.sleep(10 seconds)
+      _ <- ZIO.sleep(14 seconds)
       
-    yield page
+    yield Some(length)
 
 
 
