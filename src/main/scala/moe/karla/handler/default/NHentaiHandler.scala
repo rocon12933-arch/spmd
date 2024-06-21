@@ -178,7 +178,7 @@ class NHentaiHandler(
 
       ref <- Ref.make(Either.cond[List[Byte], String](true, "invalid", List[Byte]()))
 
-      fireSink = ZSink.collectAllN[Byte](7).map(_.toList).mapZIO(bytes =>
+      fireSink = ZSink.collectAllN[Byte](6).map(_.toList).mapZIO(bytes =>
         ref.set:
           if(config.nhentai.download.fileSignatureCheck.enabled)
             processFileExtensionName(bytes)

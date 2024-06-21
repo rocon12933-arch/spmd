@@ -18,7 +18,9 @@ object HentaiMangaConfig:
   
   final case class DownloadConfig(
 
-    nativeArchive: Boolean
+    nativeArchive: Boolean,
+
+    decompress: Boolean,
   )
 
   val layer = ZLayer(ZIO.service[AppConfig].map(_.hentaiManga))

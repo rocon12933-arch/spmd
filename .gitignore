@@ -1,7 +1,8 @@
 *.class
 *.log
 *.jar
-
+*.rar
+*.excluded
 
 data.db
 data/

@@ -16,10 +16,11 @@ import io.getquill.jdbczio.Quill
 
 import org.jsoup.Jsoup
 
+import org.apache.commons.compress.archivers.examples.Expander
+
 import java.nio.file.*
 import java.sql.SQLException
 import java.util.UUID
-
 
 
 
@@ -28,26 +29,11 @@ class HentaiMangaHandler(
 ) extends moe.karla.handler.Handler:
 
   
+  private val expander = new Expander
+
+
   private def configureRequest(url: URL) =
     Request.get(url).addHeader("User-Agent", config.agent)
-
-
-  private def fileExtJudge(bytes: List[Byte]): Either[List[Byte], String] =
-    bytes match
-      //0x50 = 0101 0000 -> self = 80
-      //0x4B = 0100 1011 -> self = 75
-      //0x03 = 0000 0011 -> self = 3
-      case 80 :: 75 :: 3 :: _ => Right("zip")
-      //0x52 = 0101 0010 -> self = 82
-      //0x61 = 0110 0001 -> self = 97
-      //0x72 = 0111 0010 -> self = 114
-      case 82 :: 97 :: 114 :: _ => Right("rar")
-      //0x37 = 0011 0110 -> self = 55
-      //0x7A = 0111 1010 -> self = 122
-      //0xBC = 1011 1100 -> 1100 0011 -> 1100 0100 = -68
-      case 55 :: 122 :: -68 :: _ => Right("7z")
-      
-      case _ => Left(bytes)
     
   
   extension [A <: String] (str: A)
@@ -113,7 +99,7 @@ class HentaiMangaHandler(
 
 
       downloadPage <- ZIO.fromOption(
-        Option(body.selectFirst("div#download_btns > a.btn")).map(_.attr("href")).map(path => 
+        Option(body.selectFirst("div.download_btns > a.btn")).map(_.attr("href")).map(path => 
           s"${url.scheme.get.encode}://${url.host.get}${path}"
         )
       ).mapError(_ => ParsingError(s"Extracting download page failed while parsing '${meta.galleryUri}'"))
@@ -135,7 +121,25 @@ class HentaiMangaHandler(
     yield (parsedMeta, parsedPages)
 
 
-  def download(page: MangaPage): ZIO[zio.http.Client & Scope, Exception, Option[Long]] =
+  def download(page: MangaPage): ZIO[zio.http.Client & Scope, Exception, Option[Long]] = {
+
+    def processFileExtensionName(bytes: List[Byte]): Either[List[Byte], String] =
+      bytes match
+        //0x50 = 0101 0000 -> self = 80
+        //0x4B = 0100 1011 -> self = 75
+        //0x03 = 0000 0011 -> self = 3
+        case 80 :: 75 :: 3 :: _ => Right("zip")
+        //0x52 = 0101 0010 -> self = 82
+        //0x61 = 0110 0001 -> self = 97
+        //0x72 = 0111 0010 -> self = 114
+        case 82 :: 97 :: 114 :: _ => Right("rar")
+        //0x37 = 0011 0110 -> self = 55
+        //0x7A = 0111 1010 -> self = 122
+        //0xBC = 1011 1100 -> 1100 0011 -> 1100 0100 = -68
+        case 55 :: 122 :: -68 :: _ => Right("7z")
+        
+        case _ => Left(bytes)
+
     for
       client <- ZIO.service[Client]
       
@@ -161,9 +165,9 @@ class HentaiMangaHandler(
 
       ref <- Ref.make(Either.cond[List[Byte], String](true, "unknown", List[Byte]()))
 
-      fireSink = ZSink.collectAllN[Byte](10).map(_.toList).mapZIO(bytes => ref.set(fileExtJudge(bytes)))
+      fireSink = ZSink.collectAllN[Byte](10).map(_.toList).mapZIO(bytes => ref.set(processFileExtensionName(bytes)))
 
-      downloadPath = s"${config.downPath}/${UUID.randomUUID().toString()}"
+      downloadPath = s"${config.downPath}/${UUID.randomUUID().toString()}.tmp"
 
       _ <- ZIO.log(s"Downloading: '${archiveUri}'")
 
@@ -199,16 +203,38 @@ class HentaiMangaHandler(
 
       ext = preExt.getOrElse("unknown")
 
-      preferringPath = s"${config.downPath}/${page.title}.${ext}"
+      savedPathRef <- Ref.make(s"${config.downPath}/${page.title}.${ext}")
 
-      _ <- defaultMoveFile(downloadPath, preferringPath)
+      _ <-
+        if (config.hentaiManga.download.decompress) {
+          ext match
+            case "zip" => 
+              ZIO.attemptBlockingIO:
+                expander.expand(Paths.get(downloadPath), Paths.get(s"${config.downPath}/${page.title}"))
+              .catchAll: _ => 
+                ZIO.logWarning(s"Decompress failure presents: '${downloadPath}', fall back to compressed file.") *>
+                  savedPathRef.get.flatMap: p =>
+                    defaultMoveFile(downloadPath, p)
+              .flatMap: _ =>
+                ZIO.attemptBlockingIO(Files.deleteIfExists(Paths.get(downloadPath))) *>
+                  savedPathRef.set(s"${config.downPath}/${page.title}")
+            case _ =>
+              ZIO.logWarning(s"Decompress supports only zip archives currently: '${downloadPath}'") *>
+                savedPathRef.get.flatMap: p =>
+                  defaultMoveFile(downloadPath, p)
+        }
+        else
+          savedPathRef.get.flatMap: p =>
+            defaultMoveFile(downloadPath, p)
+      
+      savedPath <- savedPathRef.get
 
-      _ <- ZIO.log(s"Saved: '${archiveUri}' as '${preferringPath}', downloaded size: ${String.format("%.2f", length.toFloat / 1024 / 1024)} MB")
-
+      _ <- ZIO.log(s"Saved: '${archiveUri}' as '${savedPath}', downloaded size: ${String.format("%.2f", length.toFloat / 1024 / 1024)} MB")
+        
       _ <- ZIO.sleep(14 seconds)
       
     yield Some(length)
-
+  }
 
 
 

@@ -31,7 +31,6 @@ import java.nio.file.Files
 
 
 
-
 object AppMain extends ZIOAppDefault:
 
   override val bootstrap: ZLayer[Any, Config.Error, Unit] =
@@ -48,13 +47,14 @@ object AppMain extends ZIOAppDefault:
         _ <- PrepareService.run
         _ <- DownloadHub.runDaemon
         port <- 
-          Server.install(((TaskEndpoint.routes ++ BasicEndpoint.routes) @@ 
+          Server.install(
+            (TaskEndpoint.routes ++ BasicEndpoint.routes) @@ 
             Middleware.cors(
               CorsConfig(
                 allowedOrigin = { _ => Some(AccessControlAllowOrigin.All) },
               )
             )// @@ Middleware.serveResources(Path.empty / "static")
-          ).toHttpApp)
+          )
         _ <- ZIO.log(s"Server started @ ${config.host}:${port}")
         _ <- ZIO.never
       yield ExitCode.success
