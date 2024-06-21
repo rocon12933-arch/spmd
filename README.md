@@ -1,2 +1,3 @@
 My pratice project to fetch comics.It's currently incomplete.
-To use request.ps1 to send urls to localhost:8749
+To use powershell to send messages to server like request.ps1
+Or you may unzip html pages before you export to jar.

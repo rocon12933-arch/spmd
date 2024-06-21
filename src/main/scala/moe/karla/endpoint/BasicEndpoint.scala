@@ -10,6 +10,9 @@ import moe.karla.misc.ProgramState
 object BasicEndpoint:
   
   def routes = Routes(
+
+    Method.GET / "" -> Handler.fromResponse(Response.redirect(URL.root / "static" / "index.html", isPermanent = true)),
+
     Method.GET / "health-check" -> Handler.text("health"),
 
     Method.GET / "valve" / "download" -> handler {

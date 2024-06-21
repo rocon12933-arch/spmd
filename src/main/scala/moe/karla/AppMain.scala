@@ -53,7 +53,7 @@ object AppMain extends ZIOAppDefault:
               CorsConfig(
                 allowedOrigin = { _ => Some(AccessControlAllowOrigin.All) },
               )
-            )// @@ Middleware.serveResources(Path.empty / "static")
+            ) @@ Middleware.serveResources(Path.root)
           )
         _ <- ZIO.log(s"Server started @ ${config.host}:${port}")
         _ <- ZIO.never
