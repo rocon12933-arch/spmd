@@ -18,8 +18,6 @@ object HentaiMangaConfig:
   
   final case class DownloadConfig(
 
-    nativeArchive: Boolean,
-
     decompress: Boolean,
   )
 
