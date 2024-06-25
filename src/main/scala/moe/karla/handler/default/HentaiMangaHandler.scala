@@ -231,7 +231,7 @@ class HentaiMangaHandler(
 
       _ <- ZIO.log(s"Saved: '${archiveUri}' as '${savedPath}', downloaded size: ${String.format("%.2f", length.toFloat / 1024 / 1024)} MB")
         
-      _ <- ZIO.sleep(14 seconds)
+      _ <- ZIO.sleep(7 seconds)
       
     yield Some(length)
   }

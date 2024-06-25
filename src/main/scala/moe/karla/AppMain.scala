@@ -48,12 +48,13 @@ object AppMain extends ZIOAppDefault:
         _ <- DownloadHub.runDaemon
         port <- 
           Server.install(
-            (TaskEndpoint.routes ++ BasicEndpoint.routes) @@ 
+            (TaskEndpoint.routes ++ BasicEndpoint.routes) @@
             Middleware.cors(
               CorsConfig(
                 allowedOrigin = { _ => Some(AccessControlAllowOrigin.All) },
               )
-            ) @@ Middleware.serveResources(Path.root)
+            ) @@
+            Middleware.serveResources(Path.root)
           )
         _ <- ZIO.log(s"Server started @ ${config.host}:${port}")
         _ <- ZIO.never

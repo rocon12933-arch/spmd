@@ -12,13 +12,12 @@ import zio.json.*
 import io.getquill.SnakeCase
 import io.getquill.jdbczio.Quill
 
-
 import scala.io.Source
 
 
 
-
 object TaskEndpoint:
+
 
   case class PrettyMangaMeta(
     id: Int,
@@ -28,6 +27,11 @@ object TaskEndpoint:
   )
 
   given encoder: JsonEncoder[PrettyMangaMeta] = DeriveJsonEncoder.gen[PrettyMangaMeta]
+
+  //given mangaMetaSchema: Schema[MangaMeta] = DeriveSchema.gen[MangaMeta]
+
+  //given prettyMangaMetaSchema: Schema[PrettyMangaMeta] = DeriveSchema.gen[PrettyMangaMeta]
+
 
   extension (m: MangaMeta)
     def toPretty = {
@@ -40,8 +44,7 @@ object TaskEndpoint:
           case Running.code => s"${m.completedPages} / ${m.totalPages}"
           case Completed.code => "Completed"
           case Failed.code => "Failed"
-          //case Interrupted.code => "Interrupted"
-          
+
           case _ => throw IllegalArgumentException("Undefined code") 
       )
     }
@@ -49,8 +52,7 @@ object TaskEndpoint:
 
   def routes = Routes(
     Method.GET / "tasks" -> Handler.fromFunctionZIO { (req: Request) =>
-      for 
-        config <- ZIO.service[AppConfig]
+      for
         tasks <- MangaMetaRepo.all
       yield 
         if (req.queryParam("pretty").isDefined) Response.json(tasks.map(_.toPretty).toJsonPretty)
@@ -64,10 +66,10 @@ object TaskEndpoint:
           ZIO.attempt(
             Source.fromString(content).getLines().map(_.strip()).filterNot(_ == "").filter(URL.decode(_).isRight).toList
           )
-        _ <-
-          if (lines.size > 0) 
+        _ <- 
+          ZIO.when(lines.size > 0)(
             MangaMetaRepo.batchCreate(lines.map(MangaMeta(0, _, false, None, 0, 0, MangaMeta.State.Pending.code, None)))
-          else ZIO.unit
+          )
 
       yield if (lines.size > 0) Response.json(lines.toJsonPretty) else Response.badRequest
     },

@@ -38,4 +38,7 @@ object AppConfig:
       .tapError(e => ZIO.logError(e.getMessage()))
 
 
+  def get = ZIO.serviceWithZIO[AppConfig](ZIO.succeed(_))
+
+  
   val layer = ZLayer.fromZIO(load)
