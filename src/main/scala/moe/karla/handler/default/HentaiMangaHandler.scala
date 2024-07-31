@@ -165,7 +165,7 @@ class HentaiMangaHandler(
 
       ref <- Ref.make(Either.cond[List[Byte], String](true, "unknown", List[Byte]()))
 
-      fireSink = ZSink.collectAllN[Byte](10).map(_.toList).mapZIO(bytes => ref.set(processFileExtensionName(bytes)))
+      fireSink = ZSink.collectAllN[Byte](6).map(_.toList).mapZIO(bytes => ref.set(processFileExtensionName(bytes)))
 
       downloadPath = s"${config.downPath}/${UUID.randomUUID().toString()}.tmp"
 

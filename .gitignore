@@ -3,6 +3,7 @@
 *.jar
 *.rar
 *.excluded
+*.save
 
 data.db
 data/
