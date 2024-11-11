@@ -8,7 +8,6 @@ import moe.karla.handler.*
 import zio.*
 import zio.http.*
 import zio.stream.*
-import zio.http.netty.ChannelFactories.Client
 
 import io.getquill.SnakeCase
 import io.getquill.jdbczio.Quill
@@ -59,7 +58,7 @@ class NHentaiHandler(
   extension [R, E <: Throwable, A] (z: ZIO[R, E, A])
     private def defaultRetry = 
       z.retry(retryPolicy && Schedule.recurWhile[Throwable] {
-        case _: BypassError | ParsingError => false
+        case _: (BypassError | ParsingError) => false
         case _ => true 
       })
       .mapError:
@@ -148,6 +147,8 @@ class NHentaiHandler(
         case -119 :: 80 :: 78 :: _ => Right("png")
         // 0x47 = 0100 0111 -> self = 71
         case 71 :: 73 :: 70 :: _ => Right("gif")
+        //52 49 46 46
+        case 82 :: 73 :: 70 :: 70 :: _ => Right("webp")
         
         case _ => Left(bytes)
 

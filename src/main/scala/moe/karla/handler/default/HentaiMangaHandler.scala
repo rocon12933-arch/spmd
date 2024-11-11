@@ -8,7 +8,6 @@ import moe.karla.handler.*
 import zio.*
 import zio.stream.*
 import zio.http.*
-import zio.http.netty.ChannelFactories.Client
 
 
 import io.getquill.SnakeCase

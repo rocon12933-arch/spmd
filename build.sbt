@@ -1,17 +1,17 @@
-ThisBuild / scalaVersion     := "3.4.2"
-ThisBuild / version          := "0.0.1"
+ThisBuild / scalaVersion     := "3.3.4"
+ThisBuild / version          := "0.0.2"
 ThisBuild / organization     := "moe.karla"
 
 
 
-val zioVersion = "2.1.3"
-val quillVersion = "4.8.5"
-val zioHttpVersion = "3.0.0-RC8"
+val zioVersion = "2.1.12"
+val quillVersion = "4.8.6"
+val zioHttpVersion = "3.0.1"
 val zioConfigVersion = "4.0.2"
 val zioLoggingVersion = "2.3.0"
 
 
-assembly / assemblyJarName := "Spmd-zio_0.0.1.jar"
+assembly / assemblyJarName := "spmd-zio.jar"
 
 enablePlugins(JavaAppPackaging)
 
@@ -28,7 +28,7 @@ ThisBuild / assemblyMergeStrategy := {
 lazy val root = (project in file("."))
   .settings(
     name := "spmd-zio",
-    scalaVersion := "3.4.2",
+    scalaVersion := "3.3.4",
     scalacOptions ++= Seq("-Ykind-projector:underscores", "-language:postfixOps"),
     javacOptions ++= Seq("-source", "17", "-target", "17"),
     libraryDependencies ++= Seq(
@@ -49,19 +49,19 @@ lazy val root = (project in file("."))
       "dev.zio" %% "zio-logging" % zioLoggingVersion,
       //"dev.zio" %% "zio-logging-slf4j2" % zioLoggingVersion,
 
-      "dev.zio" %% "zio-json" % "0.7.0",
+      "dev.zio" %% "zio-json" % "0.7.3",
       
-      "com.zaxxer" % "HikariCP" % "5.1.0",
+      "com.zaxxer" % "HikariCP" % "6.1.0",
       //"org.xerial" % "sqlite-jdbc" % "3.45.3.0",
       //"org.apache.derby" % "derby" % "10.15.2.0",
-      "com.h2database" % "h2" % "2.2.224",
-      "org.flywaydb" % "flyway-core" % "10.10.0",
-      "org.apache.commons" % "commons-compress" % "1.26.2",
+      "com.h2database" % "h2" % "2.3.232",
+      "org.flywaydb" % "flyway-core" % "10.21.0",
+      "org.apache.commons" % "commons-compress" % "1.27.1",
       "com.github.junrar" % "junrar" % "7.5.5",
       //"org.flywaydb" % "flyway-core" % "9.22.3",
       //"com.microsoft.playwright" % "playwright" % "1.44.0",
-      "org.slf4j" % "slf4j-simple" % "2.0.13",
-      "org.jsoup" % "jsoup" % "1.17.2",
+      "org.slf4j" % "slf4j-simple" % "2.0.16",
+      "org.jsoup" % "jsoup" % "1.18.1",
     ),
     assembly / mainClass := Some("moe.karla.AppMain")
   )

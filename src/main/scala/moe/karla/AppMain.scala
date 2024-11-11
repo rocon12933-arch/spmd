@@ -54,7 +54,7 @@ object AppMain extends ZIOAppDefault:
                 allowedOrigin = { _ => Some(AccessControlAllowOrigin.All) },
               )
             ) @@
-            Middleware.serveResources(Path.root)
+            Middleware.serveResources(Path.empty / "static")
           )
         _ <- ZIO.log(s"Server started @ ${config.host}:${port}")
         _ <- ZIO.never
